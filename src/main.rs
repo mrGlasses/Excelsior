@@ -9,6 +9,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod domain;
 mod handlers;
 mod routes;
 mod utils;
@@ -41,7 +42,6 @@ async fn main() {
 }
 
 async fn shutdown_signal() {
-    
     let ctrl_c = async {
         signal::ctrl_c()
             .await
