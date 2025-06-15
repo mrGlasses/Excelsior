@@ -1,7 +1,10 @@
+use crate::database::connection::init_db;
+use crate::engine::db_engine::DbPool;
 use crate::routes::create_routes;
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 use tower_http::timeout::TimeoutLayer;
@@ -9,8 +12,12 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod database;
+mod domain;
+mod engine;
 mod handlers;
 mod routes;
+mod state;
 mod utils;
 
 #[tokio::main]
@@ -18,7 +25,12 @@ async fn main() {
     dotenv().ok();
     setup_tracing().await;
 
-    let app = create_routes().layer((
+    let db_pool = init_db().await.expect("Failed to connect to DB");
+    let app_state = state::AppState {
+        db_pool: Arc::new(DbPool::Real(db_pool)),
+    };
+
+    let app = create_routes(app_state).layer((
         TraceLayer::new_for_http(),
         TimeoutLayer::new(Duration::from_secs(60)),
     ));
@@ -41,7 +53,6 @@ async fn main() {
 }
 
 async fn shutdown_signal() {
-    
     let ctrl_c = async {
         signal::ctrl_c()
             .await
