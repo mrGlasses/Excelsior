@@ -4,6 +4,7 @@ use std::time::Duration;
 use tower_http::classify::ServerErrorsFailureClass;
 use tower_http::compression::CompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use tracing::Span;
@@ -29,6 +30,7 @@ pub fn create_routes() -> Router {
             ),
         CompressionLayer::new(),
         RequestBodyLimitLayer::new(1024 * 1024 * 10), // 10MB limit
+        TimeoutLayer::new(Duration::from_secs(60)),
     ))
 }
 
