@@ -30,10 +30,7 @@ async fn main() {
         db_pool: Arc::new(DbPool::Real(db_pool)),
     };
 
-    let app = create_routes(app_state).layer((
-        TraceLayer::new_for_http(),
-        TimeoutLayer::new(Duration::from_secs(60)),
-    ));
+    let app = create_routes(app_state);
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
     let port = pre_port.parse().expect("MS_PORT must be a number.");
