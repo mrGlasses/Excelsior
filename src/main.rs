@@ -4,6 +4,7 @@ use crate::routes::create_routes;
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -21,7 +22,6 @@ async fn main() {
     dotenv().ok();
     setup_tracing().await;
 
-    let app = create_routes();
     let db_pool = init_db().await.expect("Failed to connect to DB");
     let app_state = state::AppState {
         db_pool: Arc::new(DbPool::Real(db_pool)),
