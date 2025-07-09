@@ -2,10 +2,7 @@ use crate::routes::create_routes;
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
-use std::time::Duration;
 use tokio::signal;
-use tower_http::timeout::TimeoutLayer;
-use tower_http::trace::TraceLayer;
 use tracing::{error, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
