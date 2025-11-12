@@ -1,4 +1,5 @@
 use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
+use std::time::Duration;
 
 pub async fn init_db() -> Result<Pool<MySql>, sqlx::Error> {
     let database_builder = &format!(
@@ -12,6 +13,10 @@ pub async fn init_db() -> Result<Pool<MySql>, sqlx::Error> {
 
     MySqlPoolOptions::new()
         .max_connections(5)
+        .min_connections(2)
+        .acquire_timeout(Duration::from_secs(3))
+        .idle_timeout(Duration::from_secs(300))
+        .max_lifetime(Duration::from_secs(1800))
         .connect(database_builder)
         .await
 }
