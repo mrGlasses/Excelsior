@@ -1,10 +1,10 @@
 use crate::routes::create_routes;
+use crate::utils::otel_config::{setup_tracing_with_otel, shutdown_telemetry};
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
 use tokio::signal;
-use tracing::{error, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{error, info, warn};
 
 mod handlers;
 mod routes;
@@ -13,7 +13,7 @@ mod utils;
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    setup_tracing().await;
+    setup_tracing_with_otel();
 
     let app = create_routes();
 
@@ -32,6 +32,9 @@ async fn main() {
     if let Err(err) = graceful.await {
         error!("server error: {}", err);
     }
+
+    info!("Shutting down OpenTelemetry...");
+    shutdown_telemetry();
 }
 
 async fn shutdown_signal() {
@@ -57,13 +60,4 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
     warn!("signal received, starting graceful shutdown");
-}
-
-pub async fn setup_tracing() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
 }
