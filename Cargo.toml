@@ -18,3 +18,45 @@ http = "1.3.1"
 [dev-dependencies]
 axum = { version = "0.6", features = ["headers"] }
 tokio = { version = "1.0", features = ["full", "test-util"] }
+
+# ============================================
+# Build Profiles Optimization
+# ============================================
+[profile.release]
+opt-level = 3           # Maximum optimization
+lto = "thin"            # Thin Link-Time Optimization (faster than "fat", good balance)
+codegen-units = 16      # Balance between compile time and runtime performance
+strip = true            # Strip symbols from binary (smaller size)
+panic = "abort"         # Reduce binary size by removing unwinding code
+incremental = false     # Disable incremental compilation in release (better optimization)
+
+# ============================================
+# Fast CI Build Profile (Optional)
+# Use with:  cargo build --profile release-fast
+# ============================================
+[profile.release-fast]
+inherits = "release"
+opt-level = 2           # Slightly less optimization (faster compilation)
+lto = false             # Disable LTO for faster builds
+codegen-units = 256     # More parallelism = faster compilation
+strip = true            # Still strip symbols
+
+# ============================================
+# Dependency Optimization
+# ============================================
+# This section allows you to override optimization for specific dependencies
+# Useful if some deps are slow to compile but don't need max optimization
+[profile.release.package."*"]
+opt-level = 3
+
+# Example: Speed up sqlx compilation in CI (uncomment if needed)
+# [profile.release.package. sqlx]
+# opt-level = 2
+
+# Example: Speed up OpenTelemetry deps (uncomment if needed)
+# [profile.release.package.opentelemetry]
+# opt-level = 2
+# [profile.release.package.opentelemetry_sdk]
+# opt-level = 2
+# [profile.release.package.opentelemetry-otlp]
+# opt-level = 2
