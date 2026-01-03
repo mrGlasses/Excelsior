@@ -1,0 +1,600 @@
+name: CI/CD Pipeline - Deploy to Oracle VPS
+
+on:
+  pull_request:
+    branches:
+      - deploy
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - hotfix
+          - rerun
+        default: 'patch'
+      build_architecture:
+        description: 'Architecture to build'
+        required: false
+        type: choice
+        options:
+          - arm64-only
+          - amd64-only
+          - multi-arch
+        default: 'arm64-only'
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME_LOWER: ${{ github.repository_owner }}/${{ github.event.repository.name }}
+
+jobs:
+  # ============================================
+  # Job 1: Version Management
+  # ============================================
+  version-bump:
+    name: Update Version
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      build_arch: ${{ steps.set-arch.outputs.arch }}
+      lower_repo: ${{ steps.lower-repo.outputs.repository }}
+      lower_owner: ${{ steps.lower-registry.outputs.owner }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Architecture Output
+        id: set-arch
+        run: |
+          # Use input if manual, otherwise default to arm64-only
+          ARCH="${{ github.event.inputs.build_architecture || 'arm64-only' }}"
+          echo "arch=$ARCH" >> $GITHUB_OUTPUT
+
+      - name: Repository to lowercase
+        id: lower-repo
+        run: |
+          echo "repository=${GITHUB_REPOSITORY@L}" >> $GITHUB_OUTPUT    
+
+      - name: Repository Owner to lowercase
+        id: lower-owner
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER@L}" >> $GITHUB_OUTPUT
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version in Cargo.toml
+        id: bump
+        run: |
+          echo "Bumping version..."
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Determine version type (from manual dispatch or default to patch)
+          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
+
+          # For rerun, just use current version without changes
+          if [ "$VERSION_TYPE" = "rerun" ]; then
+            echo "Rerun mode - using existing version: $CURRENT_VERSION"
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Split version into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Determine version type (from manual dispatch or default to patch)
+          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
+          
+          # Bump version based on type
+          case $VERSION_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch|hotfix)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          
+          # Update Cargo.lock
+          cargo update -p ms1 || cargo generate-lockfile
+          
+          # Commit changes
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to $NEW_VERSION [$VERSION_TYPE]" || echo "No changes to commit"
+          git push origin deploy
+          
+          # Set output
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Git Tag
+        if: ${{ github.event.inputs.version_type != 'rerun' }}
+        run: |
+          echo "Creating Git tag..."
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+          git push origin "v$NEW_VERSION"
+          echo "Git tag created successfully!"
+
+  # ============================================
+  # Job 2: Build and Test
+  # ============================================
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    needs: version-bump
+
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: test_db
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+      # Add OpenTelemetry Collector
+      otel-collector:
+        image: otel/opentelemetry-collector:latest
+        ports:
+          - 4317:4317  # OTLP gRPC
+          - 4318:4318  # OTLP HTTP
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: deploy
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.84
+          cache: true
+          components: clippy, rustfmt
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+          
+      - name: Set up test database
+        run: |
+          # Wait for MySQL to be ready
+          sleep 10
+          
+          # Update dev_environment.sql to use test_db instead of DEV_ENVIRONMENT
+          sed 's/DEV_ENVIRONMENT/test_db/g' tests/dev_environment.sql > tests/test_db_setup.sql
+          
+          # Run the SQL script
+          mysql -h 127.0.0.1 -u root -ptest test_db < tests/test_db_setup.sql
+          
+          echo "Test database initialized successfully"
+
+      - name: Run tests
+        run: cargo test --verbose
+        env:
+          DATABASE_NAME: test_db
+          DATABASE_HOST: ${{ secrets.DATABASE_HOST_TEST || '127.0.0.1' }}
+          DATABASE_USER: root
+          DATABASE_PSWD: test
+          DATABASE_PORT: 3306
+          MS_PORT: 3000
+          EXTERNAL_SERVICE_URL: https://dummyjson.com/c/717c-17c6-48b0-b197
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT_TEST || '127.0.0.1:4317' }}
+          OTEL_SERVICE_NAME: excelsior-test
+          ENVIRONMENT: testing
+          RUST_LOG: debug
+
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+
+  # ============================================
+  # Job 3A: Build AMD64 Docker Image
+  # ============================================
+  docker-build-amd64:
+    name: Build Docker Image (AMD64)
+    runs-on: ubuntu-latest
+    needs: [version-bump, build-and-test]
+    # CONDITIONAL: Only run if amd64-only or multi-arch
+    if: |
+      always() && 
+      needs.build-and-test.result == 'success' &&
+      (needs.version-bump.outputs.build_arch == 'amd64-only' || needs.version-bump.outputs.build_arch == 'multi-arch')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: deploy
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.version-bump.outputs.new_version }}-amd64
+            type=raw,value=latest-amd64
+
+      - name: Build and push AMD64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,mode=max,scope=amd64
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ needs.version-bump.outputs.new_version }}
+
+      - name: Image size analysis
+        run: |
+          echo "AMD64 Docker image built successfully!"
+          docker images | grep excelsiorfull || true
+
+  # ============================================
+  # Job 3B: Build ARM64 Docker Image (NATIVE)
+  # ============================================
+  docker-build-arm64:
+    name: Build Docker Image (ARM64 - Native)
+    runs-on: ubuntu-24.04-arm # NATIVE ARM64 RUNNER
+    needs: [version-bump, build-and-test]
+    # CONDITIONAL: Only run if arm64-only or multi-arch
+    if: |
+      always() && 
+      needs.build-and-test.result == 'success' &&
+      (needs.version-bump.outputs.build_arch == 'arm64-only' || needs.version-bump.outputs.build_arch == 'multi-arch')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: deploy
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.version-bump.outputs.new_version }}-arm64
+            type=raw,value=latest-arm64
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64
+          platforms: linux/arm64
+          build-args: |
+            VERSION=${{ needs.version-bump.outputs.new_version }}
+
+      - name: Image size analysis
+        run: |
+          echo "ARM64 Docker image built successfully!"
+          docker images | grep excelsiorfull || true
+
+  # ============================================
+  # Job 3C: Create Multi-Arch Manifest
+  # ============================================
+  docker-manifest:
+    name: Create Multi-Arch Manifest
+    runs-on: ubuntu-latest
+    needs: [version-bump, docker-build-amd64, docker-build-arm64]
+    # CONDITIONAL: Only run for multi-arch builds
+    if: |
+      always() && 
+      needs.version-bump.outputs.build_arch == 'multi-arch' &&
+      (needs.docker-build-amd64.result == 'success' && needs.docker-build-arm64.result == 'success')
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          echo "Creating multi-architecture manifest..."
+          
+          # Create manifest for version tag
+          docker buildx imagetools create -t ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }} \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }}-amd64 \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }}-arm64
+          
+          # Create manifest for latest tag
+          docker buildx imagetools create -t ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest-amd64 \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest-arm64
+          
+          echo "Multi-architecture manifest created successfully!"
+
+  # ============================================
+  # Job 3D: Tag Single-Arch as Latest
+  # ============================================
+  docker-tag-single-arch:
+    name: Tag Single Architecture as Latest
+    runs-on: ubuntu-latest
+    needs: [version-bump, docker-build-amd64, docker-build-arm64]
+    # 🔥 CONDITIONAL: Only run for single-arch builds
+    if: |
+      always() && 
+      (needs.version-bump.outputs.build_arch == 'arm64-only' || needs.version-bump.outputs.build_arch == 'amd64-only') &&
+      ((needs.docker-build-arm64.result == 'success' && needs.version-bump.outputs.build_arch == 'arm64-only') ||
+       (needs.docker-build-amd64.result == 'success' && needs.version-bump.outputs.build_arch == 'amd64-only'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag single-arch image as latest
+        run: |
+          if [ "${{ needs.version-bump.outputs.build_arch }}" = "arm64-only" ]; then
+            ARCH="arm64"
+          else
+            ARCH="amd64"
+          fi
+          
+          echo "Tagging ${ARCH} image as 'latest'..."
+          
+          # Create alias tags without architecture suffix
+          docker buildx imagetools create -t ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }} \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }}-${ARCH}
+          
+          docker buildx imagetools create -t ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest \
+            ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest-${ARCH}
+          
+          echo "Single-architecture (${ARCH}) tagged as 'latest' successfully!"
+
+  # ============================================
+  # Job 4: Deploy to Oracle VPS - for all id_rsa_ga, it should be only id_rsa
+  #     environment should have the same name as the branch/secret name
+  # ============================================
+  deploy:
+    name: Deploy to Oracle VPS
+    runs-on: ubuntu-latest
+    needs: [version-bump, docker-build-amd64, docker-build-arm64, docker-manifest, docker-tag-single-arch]
+    # CONDITIONAL: Run after appropriate build jobs complete
+    if: |
+      always() &&
+      (needs.docker-manifest.result == 'success' || 
+       needs.docker-tag-single-arch.result == 'success' ||
+       (needs.docker-build-arm64.result == 'success' && needs.version-bump.outputs.build_arch == 'arm64-only') ||
+       (needs.docker-build-amd64.result == 'success' && needs.version-bump.outputs.build_arch == 'amd64-only'))
+    environment: Deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: deploy
+
+      - name: Check VPS_HOST secret
+        run: |
+          if [ -z "${{ secrets.VPS_HOST }}" ]; then
+            echo "Error: VPS_HOST secret is not set."
+            exit 1
+          else
+            echo "VPS_HOST secret set and ready to go!"
+          fi
+
+      - name: Setup SSH
+        run: |
+          echo "Setting up SSH..."
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa_ga
+          chmod 600 ~/.ssh/id_rsa_ga
+          
+          # Verify key format
+          head -n 1 ~/.ssh/id_rsa_ga
+          
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts || echo "Warning: ssh-keyscan failed"
+          # Test the connection
+          ssh -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection established successfully!'" 2>&1 || {
+              echo "SSH connection failed. Check VPS_SSH_KEY, VPS_USER, and VPS_HOST secrets."
+              exit 1
+          }
+          echo "SSH setup complete!"
+
+      - name: Copy docker-compose.prod.yml to VPS
+        run: |
+          scp -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/app/docker-compose.yml
+
+      - name: Generate .env file on VPS from GitHub Secrets
+        run: |
+          echo "Generating .env file on VPS..."
+          ssh -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENVEOF'
+          # Create .env with restrictive permissions
+          umask 077
+          cat > ~/app/.env << 'EOF'
+          # ============================================
+          # Production Environment - Auto-generated
+          # Generated by GitHub Actions
+          # DO NOT EDIT MANUALLY
+          # ============================================
+
+          # Application
+          MS_PORT=${{ secrets.MS_PORT || '3000' }}
+          ENVIRONMENT=production
+          RUST_LOG=info,ms1=debug
+          RUST_BACKTRACE=0
+
+          # Database (MariaDB)
+          DATABASE_NAME=${{ secrets.DATABASE_NAME }}
+          DATABASE_HOST=${{ secrets.DATABASE_HOST }}
+          DATABASE_USER=${{ secrets.DATABASE_USER }}
+          DATABASE_PSWD=${{ secrets.DATABASE_PSWD }}
+          DATABASE_PORT=${{ secrets.DATABASE_PORT }}
+
+          # External Services
+          EXTERNAL_SERVICE_URL=https://dummyjson.com/c/717c-17c6-48b0-b197
+
+          # Grafana OpenTelemetry
+          OTEL_EXPORTER_OTLP_ENDPOINT=${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_SERVICE_NAME=excelsior-prod
+
+          # Redis
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+
+          # MongoDB
+          MONGODB_HOST=mongodb
+          MONGODB_PORT=27017
+
+          # App Version (auto-updated)
+          APP_VERSION=${{ needs.version-bump.outputs.new_version }}
+          EOF
+      
+          # Ensure only owner can read the file
+          chmod 600 ~/app/.env
+          ENVEOF
+          echo "Environment file generated successfully!"
+
+      - name: Copy migration files to VPS
+        run: |
+          echo "Copying migration files to VPS..."
+          ssh -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p ~/app/migrations"
+          scp -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no -r src/database/migrations/* ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/app/migrations/
+          echo "Migration files copied successfully!"
+
+      - name: Deploy to VPS
+        run: |
+          echo "Deploying to VPS..."
+          ssh -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            cd ~/app
+          
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          
+            # Pull the latest image
+            docker pull ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:${{ needs.version-bump.outputs.new_version }}
+            docker pull ${{ env.REGISTRY }}${{ needs.version-bump.outputs.lower_owner }}/${{ needs.version-bump.outputs.lower_repo }}:latest
+          
+            # Stop and remove old containers
+            docker compose down
+          
+            # Start new containers with production compose file
+            docker compose up -d
+          
+            # Wait for services to be healthy
+            echo "Waiting for services to start..."
+            sleep 20
+          
+            # Check container status
+            docker compose ps
+          
+            # Clean up old images (keep last 3 versions)
+            docker image prune -af --filter "until=72h"
+          
+            echo "Deployment completed successfully!"
+          EOF
+          echo "Deployment completed successfully!"
+
+      - name: Health Check
+        run: |
+          sleep 15
+          ssh -i ~/.ssh/id_rsa_ga -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "curl -f http://localhost:3000/ping || exit 1"
+          echo "Health check passed!"
+
+  # ============================================
+  # Job 5: Notification
+  # ============================================
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [version-bump, deploy]
+    if: always()
+
+    steps:
+      - name: Deployment Success
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "Deployment successful!"
+          echo "Version: ${{ needs.version-bump.outputs.new_version }}"
+          echo "Architecture: ${{ needs.version-bump.outputs.build_arch }}"
+          echo "Environment: Production (Oracle VPS)"
+          echo "Status: Live and healthy"
+
+      - name: Deployment Failed
+        if: needs.deploy.result == 'failure'
+        run: |
+          echo "XX Deployment failed!"
+          echo "Check the logs above for details."
+          exit 1

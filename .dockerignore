@@ -1,0 +1,62 @@
+# ============================================
+# . dockerignore - Optimize Docker Build Context
+# ============================================
+# This file tells Docker what NOT to copy into the build context
+# Smaller context = faster builds
+# ============================================
+
+# Build artifacts
+target/
+**/*.rs.bk
+*. pdb
+
+# IDE files
+.vscode/
+. idea/
+*. swp
+*.swo
+*~
+
+# Git
+.git/
+. gitignore
+
+# Environment files (CRITICAL: Don't copy secrets into image)
+.env
+.env.*
+!.env.example
+
+# Documentation
+README.md
+LICENSE
+*. md
+!Cargo.toml
+!Cargo.lock
+
+# Docker files (avoid recursion)
+docker-compose.yml
+docker-compose.prod.yml
+Dockerfile
+dockerfile
+. dockerignore
+
+# Test artifacts
+coverage/
+tarpaulin-report. xml
+*.profraw
+
+# CI/CD
+.github/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backups
+backups/
+
+# Nginx config (if you add it later)
+nginx/
