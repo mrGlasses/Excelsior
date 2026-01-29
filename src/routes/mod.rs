@@ -1,5 +1,6 @@
 use crate::handlers::simple_handler::*;
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
+use http::StatusCode;
 use std::time::Duration;
 use tower_http::classify::ServerErrorsFailureClass;
 use tower_http::compression::CompressionLayer;
@@ -30,7 +31,7 @@ pub fn create_routes() -> Router {
             ),
         CompressionLayer::new(),
         RequestBodyLimitLayer::new(1024 * 1024 * 10), // 10MB limit
-        TimeoutLayer::new(Duration::from_secs(60)),
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(60)),
     ))
 }
 
