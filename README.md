@@ -2,7 +2,7 @@
 
 The Safe and Easy Rust Web Ready-To-Go Archetype.
 
-[Guides](https://medium.com/excelsiorTuto)
+[Guides](https://medium.com/@realmr_glasses/excelsior-the-safe-and-easy-rust-web-ready-to-go-archetype-184207895ce0)
 
 ## Overview
 
@@ -41,16 +41,20 @@ integrated with all the other parts. After that, the code will be tested in the 
 
 ## Related Projects
 
-In addition to the crates in this repository, the Tokio project also maintains
+In addition to the crates in this repository, the Excelsior project also maintains
 several other libraries, including:
 
 * [`ExcelsiorFull`]: The Excelsior version for feature testing and global integration.
+* [`ExcelsiorExamples`]: A collection of examples using the Excelsior project.
 
-[`ExcelsiorFull`]: https://github.com/tokio-rs/axum
+[`ExcelsiorFull`]: https://github.com/mrGlasses/ExcelsiorFull
+
+[`ExcelsiorExamples`]: https://github.com/mrGlasses/ExcelsiorExamples
 
 ## Changelog
 
-- none, yay
+- 1.0.0: Initial release.
+- 2.0.0: Improving the code coverage and upgrading the dependencies.
 
 ## License
 
