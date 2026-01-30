@@ -1,4 +1,4 @@
-use excelsior::utils::main_utils::service_starter;
+use crate::utils::main_utils::service_starter;
 
 mod handlers;
 mod routes;

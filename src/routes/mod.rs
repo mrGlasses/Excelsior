@@ -1,4 +1,4 @@
-use crate::handlers::simple_handler::*;
+use crate::handlers::simple_handler::get_pong;
 use axum::{Router, routing::get};
 use http::StatusCode;
 use std::time::Duration;
