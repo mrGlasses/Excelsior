@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - deploy
-    types: [closed]
+    types: [ closed ]
   workflow_dispatch:
     inputs:
       version_type:
@@ -77,6 +77,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Rust Nightly
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          cache: false
 
       - name: Bump version in Cargo.toml
         id: bump
@@ -178,7 +184,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.84
+          toolchain: nightly
           cache: true
           components: clippy, rustfmt
 
@@ -186,7 +192,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
-          
+
       - name: Set up test database
         run: |
           # Wait for MySQL to be ready
@@ -224,7 +230,7 @@ jobs:
   docker-build-amd64:
     name: Build Docker Image (AMD64)
     runs-on: ubuntu-latest
-    needs: [version-bump, build-and-test]
+    needs: [ version-bump, build-and-test ]
     # CONDITIONAL: Only run if amd64-only or multi-arch
     if: |
       always() && 
@@ -284,7 +290,7 @@ jobs:
   docker-build-arm64:
     name: Build Docker Image (ARM64 - Native)
     runs-on: ubuntu-24.04-arm # NATIVE ARM64 RUNNER
-    needs: [version-bump, build-and-test]
+    needs: [ version-bump, build-and-test ]
     # CONDITIONAL: Only run if arm64-only or multi-arch
     if: |
       always() && 
@@ -344,7 +350,7 @@ jobs:
   docker-manifest:
     name: Create Multi-Arch Manifest
     runs-on: ubuntu-latest
-    needs: [version-bump, docker-build-amd64, docker-build-arm64]
+    needs: [ version-bump, docker-build-amd64, docker-build-arm64 ]
     # CONDITIONAL: Only run for multi-arch builds
     if: |
       always() && 
@@ -384,7 +390,7 @@ jobs:
   docker-tag-single-arch:
     name: Tag Single Architecture as Latest
     runs-on: ubuntu-latest
-    needs: [version-bump, docker-build-amd64, docker-build-arm64]
+    needs: [ version-bump, docker-build-amd64, docker-build-arm64 ]
     # 🔥 CONDITIONAL: Only run for single-arch builds
     if: |
       always() && 
@@ -429,7 +435,7 @@ jobs:
   deploy:
     name: Deploy to Oracle VPS
     runs-on: ubuntu-latest
-    needs: [version-bump, docker-build-amd64, docker-build-arm64, docker-manifest, docker-tag-single-arch]
+    needs: [ version-bump, docker-build-amd64, docker-build-arm64, docker-manifest, docker-tag-single-arch ]
     # CONDITIONAL: Run after appropriate build jobs complete
     if: |
       always() &&
@@ -520,7 +526,7 @@ jobs:
           # App Version (auto-updated)
           APP_VERSION=${{ needs.version-bump.outputs.new_version }}
           EOF
-      
+          
           # Ensure only owner can read the file
           chmod 600 ~/app/.env
           ENVEOF
@@ -579,7 +585,7 @@ jobs:
   notify:
     name: Notify Deployment Status
     runs-on: ubuntu-latest
-    needs: [version-bump, deploy]
+    needs: [ version-bump, deploy ]
     if: always()
 
     steps:
