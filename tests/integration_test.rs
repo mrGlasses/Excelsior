@@ -2,13 +2,11 @@ use axum::http::StatusCode;
 use dotenv::dotenv;
 use serial_test::serial;
 // Import the ms1 crate and its modules
-use excelsior::routes;
 use excelsior::utils::main_utils::service_starter;
+use sqlx::MySqlPool;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use sqlx::MySqlPool;
-use std::net::TcpListener;
-use std::sync::Arc;
 
 // Import the excelsior crate and its modules
 use excelsior::{database, engine::db_engine::DbPool, routes, state::AppState};

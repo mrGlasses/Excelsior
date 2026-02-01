@@ -1,7 +1,11 @@
+use crate::database::connection::init_db;
+use crate::engine::db_engine::DbPool;
 use crate::routes::create_routes;
+use crate::state;
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::warn;
@@ -12,7 +16,12 @@ pub async fn service_starter() {
     dotenv().ok();
     setup_tracing().await;
 
-    let app = create_routes();
+    let db_pool = init_db().await.expect("Failed to connect to DB");
+    let app_state = state::AppState {
+        db_pool: Arc::new(DbPool::Real(db_pool)),
+    };
+
+    let app = create_routes(app_state);
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
     let port = pre_port.parse().expect("MS_PORT must be a number.");
