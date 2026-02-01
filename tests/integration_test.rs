@@ -1,20 +1,14 @@
 use dotenv::dotenv;
-use serial_test::serial;
-use std::env;
-use std::net::TcpListener;
-
-// Import the excelsior crate and its modules
-use serial_test::serial;
-// Import the ms1 crate and its modules
 use excelsior::routes;
+use excelsior::utils::main_utils::service_starter;
 use excelsior::utils::otel_config::{setup_tracing_with_otel, shutdown_telemetry};
+use serial_test::serial;
 use std::sync::Once;
+use std::time::Duration;
+use tokio::net::TcpListener;
 
 // Helper function to set up the test environment
 static INIT: Once = Once::new();
-use excelsior::utils::main_utils::service_starter;
-use std::time::Duration;
-use tokio::net::TcpListener;
 
 fn setup_test_env() {
     // Skip dotenv loading if running in CI
@@ -69,19 +63,16 @@ async fn test_server_health_check() {
 
 #[tokio::test]
 #[serial]
+#[ignore]
 async fn test_setup_tracing_with_otel_full_stack() {
+    println!("1");
     setup_test_env();
-    INIT.call_once(|| {
-        // Initialize any global test setup here
-        env::set_var("RUST_LOG", "info");
-    });
+    println!("2");
+    INIT.call_once(|| {});
+    println!("3");
+    shutdown_telemetry();
 
-    env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317");
-    env::set_var("OTEL_SERVICE_NAME", "excelsior-tracing-test");
-    env::set_var("ENVIRONMENT", "testing");
-    env::set_var("RUST_LOG", "info");
-
-    println!("🔧 Testing setup_tracing_with_otel with real collector...");
+    println!("Testing setup_tracing_with_otel with real collector...");
 
     // This function calls init_telemetry internally and sets up the subscriber
     // Note: This can only be called ONCE per test process due to global subscriber
@@ -91,33 +82,28 @@ async fn test_setup_tracing_with_otel_full_stack() {
 
     match result {
         Ok(_) => {
-            println!("✅ Successfully set up tracing with OpenTelemetry");
+            println!("Successfully set up tracing with OpenTelemetry");
 
             // Test that tracing works
             tracing::info!("Test log message from integration test");
             tracing::debug!("Debug message - should respect RUST_LOG");
             tracing::warn!("Warning message");
 
-            println!("✅ Tracing messages sent successfully");
+            println!("Tracing messages sent successfully");
 
             // Give time for spans to flush
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
             shutdown_telemetry();
-            println!("✅ Successfully shut down telemetry");
+            println!("Successfully shut down telemetry");
         }
         Err(e) => {
             // The function might panic if collector is not available
-            eprintln!("❌ setup_tracing_with_otel panicked: {:?}", e);
-            eprintln!("💡 Make sure OTLP collector is running on localhost:4317");
+            eprintln!("setup_tracing_with_otel panicked: {:?}", e);
+            eprintln!("Make sure OTLP collector is running on localhost:4317");
             panic!("Tracing setup failed");
         }
     }
-
-    // Clean up
-    env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
-    env::remove_var("OTEL_SERVICE_NAME");
-    env::remove_var("ENVIRONMENT");
 }
 
 #[tokio::test]

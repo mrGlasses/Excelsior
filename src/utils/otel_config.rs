@@ -1,29 +1,35 @@
 use anyhow::Result;
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry::{global, KeyValue};
+use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, TracerProvider};
-use opentelemetry_sdk::{runtime, Resource};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, SdkTracerProvider};
+use std::sync::OnceLock;
 use std::time::Duration;
+use tracing_opentelemetry::OpenTelemetryLayer;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
-pub fn init_telemetry() -> Result<TracerProvider> {
+static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
+
+pub fn init_telemetry() -> Result<SdkTracerProvider> {
     let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://localhost:4317".to_string());
 
     let service_name =
         std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "excelsior".to_string());
 
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", service_name.clone()),
-        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-        KeyValue::new(
-            "deployment.environment",
-            std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string()),
-        ),
-    ]);
+    let resource = Resource::builder()
+        .with_attributes([
+            KeyValue::new("service.name", service_name.clone()),
+            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+            KeyValue::new(
+                "deployment.environment",
+                std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string()),
+            ),
+        ])
+        .build();
 
     let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
@@ -32,8 +38,8 @@ pub fn init_telemetry() -> Result<TracerProvider> {
         .build()
         .expect("Failed to build OTLP exporter - check OTEL_EXPORTER_OTLP_ENDPOINT");
 
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(otlp_exporter, runtime::Tokio)
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(otlp_exporter)
         .with_resource(resource)
         .with_sampler(Sampler::AlwaysOn) // For production, consider ParentBased(TraceIdRatioBased(0.1))
         .with_id_generator(RandomIdGenerator::default())
@@ -50,7 +56,7 @@ pub fn setup_tracing_with_otel() {
 
     let tracer = tracer_provider.tracer("excelsior");
 
-    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let otel_layer = OpenTelemetryLayer::new(tracer);
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
@@ -65,5 +71,9 @@ pub fn setup_tracing_with_otel() {
 }
 
 pub fn shutdown_telemetry() {
-    global::shutdown_tracer_provider();
+    if let Some(provider) = TRACER_PROVIDER.get()
+        && let Err(e) = provider.shutdown()
+    {
+        eprintln!("Failed to shutdown tracer provider: {e}");
+    }
 }
