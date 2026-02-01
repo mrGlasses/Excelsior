@@ -6,7 +6,8 @@ pub async fn start_message(location: String) {
     println!("|  __|  \\ \\/ /  |  |    |  __| | |    \\__  \\   | |   | | | | |    / ");
     println!("| |__   / /\\ \\  \\  \\__  | |__  | |__   __| |  _| |_  | |_| | | |\\ \\ ");
     println!(
-        "|____| |_/  \\_|  \\____| |____| |____| |____/ |_____| \\_____/ |_| \\_\\   ver. 1.0.0"
+        "|____| |_/  \\_|  \\____| |____| |____| |____/ |_____| \\_____/ |_| \\_\\   ver. {}",
+        env!("CARGO_PKG_VERSION")
     );
     println!();
     println!("Server listening on {}.", location)

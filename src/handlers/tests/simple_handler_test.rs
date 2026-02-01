@@ -1,10 +1,13 @@
 use crate::handlers::simple_handler::*;
-use axum::body::HttpBody;
+use axum::body::to_bytes;
 
 #[tokio::test]
 async fn test_get_pong() {
     let response = get_pong().await;
-    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body = to_bytes(response.into_body(), usize::MAX).await;
 
-    assert_eq!(&body[..], b"PONG!");
+    match body {
+        Err(e) => panic!("Error: {}", e),
+        Ok(b) => assert_eq!(&b[..], b"PONG!"),
+    }
 }
