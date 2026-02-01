@@ -1,9 +1,8 @@
 use crate::handlers::simple_handler::*;
-use axum::body::HttpBody;
+use axum::body::to_bytes;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use httpmock::prelude::*;
-use axum::body::to_bytes;
+use httpmock::MockServer;
 
 #[tokio::test]
 async fn test_get_pong() {
