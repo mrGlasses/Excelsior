@@ -6,3 +6,8 @@ pub struct Message {
     pub code: i32,
     pub message_text: String,
 }
+
+pub struct ReplaceParams {
+    pub old_str: String,
+    pub new_str: String,
+}
