@@ -84,6 +84,37 @@ jobs:
           toolchain: nightly
           cache: false
 
+      - name: Determine version type from PR
+        id: determine-version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual dispatch - use the input
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          else
+            # PR merge - extract from PR title or body
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            PR_BODY="${{ github.event.pull_request.body }}"
+
+            # Combine title and body for searching (case-insensitive)
+            COMBINED=$(echo "$PR_TITLE $PR_BODY" | tr '[:upper:]' '[:lower:]')
+
+            if [[ "$COMBINED" == *"[major]"* ]]; then
+              VERSION_TYPE="major"
+            elif [[ "$COMBINED" == *"[minor]"* ]]; then
+              VERSION_TYPE="minor"
+            elif [[ "$COMBINED" == *"[hotfix]"* ]]; then
+              VERSION_TYPE="hotfix"
+            elif [[ "$COMBINED" == *"[rerun]"* ]]; then
+              VERSION_TYPE="rerun"
+            else
+              # Default to patch if no keyword found
+              VERSION_TYPE="patch"
+            fi
+          fi
+
+          echo "Detected version type: $VERSION_TYPE"
+          echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
+
       - name: Bump version in Cargo.toml
         id: bump
         run: |
@@ -92,8 +123,9 @@ jobs:
           CURRENT_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           echo "Current version: $CURRENT_VERSION"
 
-          # Determine version type (from manual dispatch or default to patch)
-          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
+          # Use the determined version type
+          VERSION_TYPE="${{ steps.determine-version.outputs.version_type }}"
+          echo "Version type: $VERSION_TYPE"
 
           # For rerun, just use current version without changes
           if [ "$VERSION_TYPE" = "rerun" ]; then
@@ -104,9 +136,6 @@ jobs:
           
           # Split version into parts
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-          
-          # Determine version type (from manual dispatch or default to patch)
-          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
           
           # Bump version based on type
           case $VERSION_TYPE in
