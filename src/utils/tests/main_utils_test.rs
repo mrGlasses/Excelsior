@@ -21,11 +21,9 @@ async fn test_shutdown_signal_ctrl_c() {
     tokio::select! {
         _ = shutdown_future => {
             // Signal was received (this path won't be taken in test)
-            assert!(true);
         }
         _ = tokio::time::sleep(Duration::from_millis(50)) => {
             // Timeout reached - expected behavior in test
-            assert!(true);
         }
     }
 }
