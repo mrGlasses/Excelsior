@@ -10,7 +10,6 @@ fn test_shutdown_telemetry_without_init() {
     // This test verifies that shutdown can be called without panicking
     // Even if no tracer provider was set
     shutdown_telemetry();
-    assert!(true, "Shutdown executed without panic");
 }
 
 /// Test URL validation - valid OTLP endpoints
@@ -49,7 +48,6 @@ fn test_resource_attributes_count() {
     // We can't easily count attributes without exposing internal API,
     // but we can verify it doesn't panic
     drop(resource);
-    assert!(true, "Resource created with 3 attributes");
 }
 
 /// Integration test: Test init_telemetry with a valid endpoint
@@ -71,8 +69,6 @@ async fn test_init_telemetry_with_real_collector() {
             // Clean up the provider
             drop(provider);
             //shutdown_telemetry();
-
-            assert!(true, "Telemetry initialized successfully");
         }
         Err(e) => {
             println!("Failed to initialize telemetry: {:?}", e);
@@ -94,7 +90,7 @@ async fn test_init_telemetry_unreachable_endpoint() {
 
         // The exporter build itself should succeed (lazy connection)
         // but actual span export would fail
-        let _result = std::panic::catch_unwind(|| init_telemetry());
+        let _result = std::panic::catch_unwind(init_telemetry);
 
         // The lazy connection builder should NOT panic immediately
         // It only fails when actually trying to send data
@@ -112,6 +108,4 @@ fn test_multiple_shutdown_calls() {
     shutdown_telemetry();
     shutdown_telemetry();
     shutdown_telemetry();
-
-    assert!(true, "Multiple shutdown calls handled gracefully");
 }
