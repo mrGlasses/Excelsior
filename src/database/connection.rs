@@ -1,0 +1,22 @@
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use std::time::Duration;
+
+pub async fn init_db() -> Result<Pool<Postgres>, sqlx::Error> {
+    let database_builder = &format!(
+        "postgres://{}:{}@{}:{}/{}",
+        std::env::var("DATABASE_USER").expect("DATABASE_USER must be set."),
+        std::env::var("DATABASE_PSWD").expect("DATABASE_PSWD must be set."),
+        std::env::var("DATABASE_HOST").expect("DATABASE_HOST must be set."),
+        std::env::var("DATABASE_PORT").expect("DATABASE_PORT must be set."),
+        std::env::var("DATABASE_NAME").expect("DATABASE_NAME must be set."),
+    );
+
+    PgPoolOptions::new()
+        .max_connections(5)
+        .min_connections(2)
+        .acquire_timeout(Duration::from_secs(3))
+        .idle_timeout(Duration::from_secs(300))
+        .max_lifetime(Duration::from_secs(1800))
+        .connect(database_builder)
+        .await
+}

@@ -1,14 +1,14 @@
-CREATE OR REPLACE DATABASE DEV_ENVIRONMENT
-CHARACTER SET = 'utf8mb4'
-COLLATE = 'utf8mb4_unicode_520_ci';
+-- Postgres has no single-script equivalent of MySQL's "CREATE DATABASE; USE";
+-- the target database (DEV_ENVIRONMENT locally, test_db in CI) must already
+-- exist and be the database this script is run against.
+DROP TABLE IF EXISTS t_users CASCADE;
 
-CREATE TABLE `DEV_ENVIRONMENT`.`t_Users` (
-    `UID` int(11) NOT NULL AUTO_INCREMENT,
-    `NAME` varchar(15) NOT NULL,
-    PRIMARY KEY (`UID`)
-) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+CREATE TABLE t_users (
+    uid SERIAL PRIMARY KEY,
+    name VARCHAR(15) NOT NULL
+);
 
-INSERT INTO `DEV_ENVIRONMENT`.`t_Users` (`NAME`) VALUES
+INSERT INTO t_users (name) VALUES
 ('Alice'),
 ('Bob'),
 ('Charlie'),
@@ -27,31 +27,22 @@ INSERT INTO `DEV_ENVIRONMENT`.`t_Users` (`NAME`) VALUES
 ('Peggy'),
 ('Quentin');
 
-CREATE OR REPLACE PROCEDURE DEV_ENVIRONMENT.sp_Return_USERS()
+CREATE OR REPLACE FUNCTION sp_return_users()
+RETURNS TABLE (uid integer, name varchar) AS $$
 BEGIN
-SELECT
-    U.UID,
-    U.NAME
-FROM t_Users U;
-
-#     SIGNAL SQLSTATE '45000'
-# 		SET MESSAGE_TEXT = 'TEST';
+    RETURN QUERY
+    SELECT
+        u.uid,
+        u.name
+    FROM t_users u;
 END;
+$$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE PROCEDURE DEV_ENVIRONMENT.sp_Insert_User(
-    IN prmName varchar(15)
-)
+CREATE OR REPLACE PROCEDURE sp_insert_user(IN prm_name varchar(15))
+LANGUAGE plpgsql
+AS $$
 BEGIN
-    START TRANSACTION;
-    INSERT INTO t_Users (NAME)
-    VALUES (prmName);
-    COMMIT;
-
-#    SIGNAL SQLSTATE '45000'
-#		SET MESSAGE_TEXT = 'TEST';
-end;
-
-#the "signal" statements above are commented out to avoid errors during execution.
-
-
-
+    INSERT INTO t_users (name)
+    VALUES (prm_name);
+END;
+$$;

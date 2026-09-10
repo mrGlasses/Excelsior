@@ -1,10 +1,15 @@
+use axum::http::StatusCode;
 use dotenv::dotenv;
 // Import the ms1 crate and its modules
-use excelsior::routes;
 use excelsior::utils::main_utils::service_starter;
 use serial_test::serial;
+use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
+
+// Import the excelsior crate and its modules
+use excelsior::{database, engine::db_engine::DbPool, routes, state::AppState};
 
 fn setup_test_env() {
     // Skip dotenv loading if running in CI
@@ -21,6 +26,13 @@ fn setup_test_env() {
     }
 }
 
+// Helper function to create a test database connection
+async fn create_test_db_pool() -> PgPool {
+    database::connection::init_db()
+        .await
+        .expect("Failed to connect to test database")
+}
+
 // Helper function to create a test app instance
 async fn spawn_app() -> String {
     setup_test_env();
@@ -29,8 +41,15 @@ async fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
+    // Set up a test database connection using the same method as the main app
+    let pool = create_test_db_pool().await;
+
+    let app_state = AppState {
+        db_pool: Arc::new(DbPool::Real(pool)),
+    };
+
     // Build the application with routes
-    let app = routes::create_routes();
+    let app = routes::create_routes(app_state);
 
     // Spawn the server in the background
     tokio::spawn(async move {
@@ -40,6 +59,15 @@ async fn spawn_app() -> String {
     });
 
     format!("http://127.0.0.1:{}", port)
+}
+
+// Helper function to clean up test data
+async fn cleanup_test_data(pool: &PgPool) {
+    // Add cleanup queries here if needed
+    sqlx::query("DELETE FROM t_users WHERE name = 'Test User'")
+        .execute(pool)
+        .await
+        .expect("Failed to clean up test data");
 }
 
 #[tokio::test]
@@ -55,6 +83,47 @@ async fn test_server_health_check() {
 
     assert!(response.status().is_success());
     assert_eq!(response.text().await.unwrap(), "PONG!");
+}
+
+#[tokio::test]
+async fn test_get_users() {
+    setup_test_env();
+    let pool = create_test_db_pool().await;
+    let address = spawn_app().await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{}/users", address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert!(response.status().is_success());
+
+    cleanup_test_data(&pool).await;
+}
+
+#[tokio::test]
+async fn test_create_user() {
+    setup_test_env();
+    let pool = create_test_db_pool().await;
+    let address = spawn_app().await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{}/users", address))
+        .json(&serde_json::json!({
+            "name": "Test User"
+        }))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+    assert_eq!(
+        StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::UNAUTHORIZED),
+        StatusCode::CREATED
+    );
+
+    cleanup_test_data(&pool).await;
 }
 
 #[tokio::test]
