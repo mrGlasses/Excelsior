@@ -27,7 +27,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-excelsior-prod}
       ENVIRONMENT: production
-      RUST_LOG: ${RUST_LOG:-info,ms1=debug}
+      RUST_LOG: ${RUST_LOG:-info,excelsior=debug}
     depends_on:
       db:
         condition: service_healthy

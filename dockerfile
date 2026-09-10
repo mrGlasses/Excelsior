@@ -64,7 +64,7 @@ RUN touch src/main.rs
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/sccache \
-    cargo build --release --bin ms1
+    cargo build --release --bin excelsior
 
 # Show sccache statistics (for debugging build performance)
 RUN sccache --show-stats || true
@@ -93,7 +93,7 @@ WORKDIR /app
 
 # Copy the compiled binary from the builder stage
 # Only the final binary is included, not source code or build artifacts
-COPY --from=builder /app/target/release/ms1 /app/ms1
+COPY --from=builder /app/target/release/excelsior /app/excelsior
 
 # Change ownership to the non-root user
 RUN chown -R appuser:appuser /app
@@ -117,4 +117,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Entrypoint
 # ============================================
 # Run the binary
-ENTRYPOINT ["/app/ms1"]
+ENTRYPOINT ["/app/excelsior"]

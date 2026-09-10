@@ -160,7 +160,7 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
           
           # Update Cargo.lock
-          cargo update -p ms1 || cargo generate-lockfile
+          cargo update -p excelsior || cargo generate-lockfile
           
           # Commit changes
           git add Cargo.toml Cargo.lock
@@ -527,7 +527,7 @@ jobs:
           # Application
           MS_PORT=${{ secrets.MS_PORT || '3000' }}
           ENVIRONMENT=production
-          RUST_LOG=info,ms1=debug
+          RUST_LOG=info,excelsior=debug
           RUST_BACKTRACE=0
 
           # Database (MariaDB)
