@@ -4,7 +4,7 @@ use anyhow::Result;
 use axum::extract::State;
 #[cfg(test)]
 use mockall::automock;
-use sqlx::{query, MySql, Pool, Row};
+use sqlx::{MySql, Pool, Row, query};
 
 // Wrapper type that can be either a real pool or a mock (in tests)
 pub enum DbPool {
@@ -34,7 +34,8 @@ impl DatabaseExecutor for Pool<MySql> {
     }
 
     async fn execute_create_user(&self, name: String) -> Result<String> {
-        let _ = query(&format!("CALL sp_Insert_User(\"{}\")", name))
+        let _ = query("CALL sp_Insert_User(?)")
+            .bind(name)
             .execute(self)
             .await?;
         Ok("OK".to_string())
