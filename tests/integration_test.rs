@@ -61,6 +61,12 @@ async fn test_server_health_check() {
 #[serial]
 async fn test_service_starter_initialization() {
     setup_test_env();
+    // .env.test sets MS_PORT=0 (random port) for tests that bind their own listener;
+    // service_starter() reads MS_PORT directly, so it needs a fixed value to match
+    // the address this test checks below.
+    unsafe {
+        std::env::set_var("MS_PORT", "3000");
+    }
 
     println!("Testing service starter initialization...");
     // Spawn service_starter in a background task
@@ -97,9 +103,14 @@ async fn test_service_starter_initialization() {
 }
 
 #[tokio::test]
-//#[serial]
+#[serial]
 async fn test_service_starter_graceful_shutdown() {
     setup_test_env();
+    // Distinct fixed port from test_service_starter_initialization above; both tests
+    // are #[serial] so mutating this shared env var between them is safe.
+    unsafe {
+        std::env::set_var("MS_PORT", "9998");
+    }
 
     // Spawn service_starter in a background task
     let server_handle = tokio::spawn(async move {
@@ -125,11 +136,16 @@ async fn test_service_starter_graceful_shutdown() {
     // Abort the server to simulate shutdown
     server_handle.abort();
 
-    // Wait a bit for cleanup
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // abort() only requests cancellation; the task keeps running until its next
+    // await point, so wait for it to actually finish tearing down (and dropping the
+    // listener) rather than guessing with a fixed sleep.
+    let _ = tokio::time::timeout(Duration::from_secs(2), server_handle).await;
 
-    // Verify server is no longer responding
-    let response_after = client
+    // Verify server is no longer responding. A fresh client is used here (rather than
+    // reusing `client`) so this genuinely opens a new connection instead of reusing a
+    // keep-alive one from the request above, which would still succeed via its own
+    // per-connection task even after the listener itself is closed.
+    let response_after = reqwest::Client::new()
         .get("http://127.0.0.1:9998/ping")
         .timeout(Duration::from_secs(1))
         .send()
