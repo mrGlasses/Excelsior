@@ -1,10 +1,20 @@
 use dotenv::dotenv;
-// Import the ms1 crate and its modules
-use excelsior::routes;
+// Import the excelsior crate and its modules
 use excelsior::utils::main_utils::service_starter;
+use excelsior::{database, engine::cache_engine::CachePool, routes, state::AppState};
 use serial_test::serial;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
+
+// The Redis ConnectionManager is bound to the Tokio runtime that created it, so tests
+// that spawn their own server (rather than going through service_starter()) need their
+// own connection rather than sharing one across tests.
+async fn create_test_cache_pool() -> redis::aio::ConnectionManager {
+    database::redis_connection::init_cache()
+        .await
+        .expect("Failed to connect to test cache")
+}
 
 fn setup_test_env() {
     // Skip dotenv loading if running in CI
@@ -29,8 +39,13 @@ async fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
+    let cache_pool = create_test_cache_pool().await;
+    let app_state = AppState {
+        cache_pool: Arc::new(CachePool::Real(cache_pool)),
+    };
+
     // Build the application with routes
-    let app = routes::create_routes();
+    let app = routes::create_routes(app_state);
 
     // Spawn the server in the background
     tokio::spawn(async move {

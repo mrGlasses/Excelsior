@@ -1,7 +1,11 @@
+use crate::database::redis_connection::init_cache;
+use crate::engine::cache_engine::CachePool;
 use crate::routes::create_routes;
+use crate::state::AppState;
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::warn;
@@ -12,7 +16,12 @@ pub async fn service_starter() {
     dotenv().ok();
     setup_tracing().await;
 
-    let app = create_routes();
+    let cache_pool = init_cache().await.expect("Failed to connect to Redis");
+    let app_state = AppState {
+        cache_pool: Arc::new(CachePool::Real(cache_pool)),
+    };
+
+    let app = create_routes(app_state);
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
     let port = pre_port.parse().expect("MS_PORT must be a number.");
