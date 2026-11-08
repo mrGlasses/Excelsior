@@ -1,5 +1,5 @@
-use crate::domain::database::NewUser;
-use crate::engine::db_engine::{create_user_db_call, get_users_db_call};
+use crate::domain::database::{NewUser, NewUserPair};
+use crate::engine::db_engine::{create_user_db_call, create_user_pair_db_call, get_users_db_call};
 use crate::state::AppState;
 use axum::response::{IntoResponse, Response};
 use axum::{Json, extract::State, http::StatusCode};
@@ -36,6 +36,29 @@ pub async fn create_user(State(state): State<AppState>, Json(payload): Json<NewU
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("failed to insert user: {}", err).into_response(),
+            )
+                .into_response()
+        }
+    }
+}
+
+// Demo for transactions: both users are inserted in one transaction,
+// so if the second insert fails, the first one is rolled back too.
+pub async fn create_user_pair(
+    State(state): State<AppState>,
+    Json(payload): Json<NewUserPair>,
+) -> Response {
+    info!("create_user_pair called with params: {:?}", payload);
+    match create_user_pair_db_call(State(state), payload.first, payload.second).await {
+        Ok(_) => {
+            warn!("New user pair created");
+            (StatusCode::CREATED, "CREATED").into_response()
+        }
+        Err(err) => {
+            error!("Error occurred, user pair rolled back: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to insert user pair: {}", err),
             )
                 .into_response()
         }

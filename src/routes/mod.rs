@@ -1,4 +1,4 @@
-use crate::handlers::db_handler::{create_user, get_users};
+use crate::handlers::db_handler::{create_user, create_user_pair, get_users};
 use crate::handlers::simple_handler::get_pong;
 use crate::state::AppState;
 use axum::routing::post;
@@ -18,6 +18,7 @@ pub fn create_routes(state: AppState) -> Router {
         .route("/ping", get(get_pong))
         .route("/users", get(get_users))
         .route("/users", post(create_user))
+        .route("/users/pair", post(create_user_pair))
         .layer((
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))

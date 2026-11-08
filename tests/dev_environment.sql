@@ -1,6 +1,10 @@
 -- Postgres has no single-script equivalent of MySQL's "CREATE DATABASE; USE";
 -- the target database (DEV_ENVIRONMENT locally, test_db in CI) must already
 -- exist and be the database this script is run against.
+-- The integration tests also run the app's migrations (src/database/migrations)
+-- on top of this script. Dropping sqlx's bookkeeping table here keeps a reset
+-- honest: otherwise sqlx would think 0001 already ran against the new t_users.
+DROP TABLE IF EXISTS _sqlx_migrations;
 DROP TABLE IF EXISTS t_users CASCADE;
 
 CREATE TABLE t_users (
