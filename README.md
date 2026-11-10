@@ -20,6 +20,12 @@ in the "exp-pack" folder is an extra feature/example to add to your project.
 
 Some IDEs allow you to use a repository as a base to avoid cloning, see with your IDE.
 
+### Environment variables
+
+- `WORKER_SHUTDOWN_TIMEOUT_SECS` — optional, seconds each background worker gets to stop on shutdown before it's abandoned (default `8`, under Docker's 10-second grace period).
+- `DEMO_HEARTBEAT_FAIL_AFTER` — optional, demo only: makes the `heartbeat` worker fail after that many beats, so the app exits with code 1.
+- `DEMO_STUCK_WORKER` — optional, demo only: `true` starts a worker that ignores the stop signal, to see the shutdown timeout.
+
 ## Contributing
 
 Thanks for your help in improving the project! If you're willing to contribute, you'll have to follow several rules:
