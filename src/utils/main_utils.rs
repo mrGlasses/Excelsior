@@ -1,3 +1,5 @@
+use crate::engine::telegram_engine::{DEFAULT_TELEGRAM_API_URL, TelegramApi};
+use crate::handlers::telegram_handler::{POLL_TIMEOUT_SECS, run_telegram_bot};
 use crate::handlers::worker_handler::{heartbeat_loop, stuck_loop};
 use crate::routes::create_routes;
 use crate::utils::un_utils::start_message;
@@ -7,7 +9,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -15,6 +17,19 @@ use tracing_subscriber::util::SubscriberInitExt;
 pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
+
+    // Checked first, so a missing token stops the app before anything else starts.
+    let telegram_token = match std::env::var("TELEGRAM_BOT_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => token,
+        _ => {
+            error!("TELEGRAM_BOT_TOKEN is missing");
+            return false;
+        }
+    };
+    let telegram_api_url =
+        std::env::var("TELEGRAM_API_URL").unwrap_or_else(|_| DEFAULT_TELEGRAM_API_URL.to_string());
+    let telegram_api = TelegramApi::new(&telegram_api_url, &telegram_token, POLL_TIMEOUT_SECS)
+        .expect("Failed to build the Telegram HTTP client");
 
     let app = create_routes();
 
@@ -32,6 +47,9 @@ pub async fn service_starter() -> bool {
         shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
     let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
     workers.spawn("heartbeat", heartbeat_loop);
+    workers.spawn("telegram", move |shutdown| {
+        run_telegram_bot(Box::new(telegram_api), shutdown)
+    });
     if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
         workers.spawn("stuck", stuck_loop);
     }
@@ -87,10 +105,13 @@ pub async fn shutdown_signal() {
 }
 
 pub async fn setup_tracing() {
-    tracing_subscriber::registry()
+    // try_init (not init) because in the test binary, several tests call this via
+    // service_starter(); a global subscriber can only be set once per process, and any
+    // call after the first is expected to no-op rather than panic.
+    let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 }

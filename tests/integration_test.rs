@@ -57,6 +57,36 @@ async fn test_server_health_check() {
     assert_eq!(response.text().await.unwrap(), "PONG!");
 }
 
+// A fake Telegram Bot API for the tests that start the whole app: service_starter()
+// needs a bot token, and tests must never talk to the real Telegram.
+// Keep the returned server alive for the whole test.
+async fn start_fake_telegram() -> httpmock::MockServer {
+    let server = httpmock::MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST").path("/botTEST-TOKEN/getMe");
+            then.status(200).json_body(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "first_name": "Test", "username": "TestBot"}
+            }));
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST").path("/botTEST-TOKEN/getUpdates");
+            // A real long poll waits when nothing happens; the delay stops a busy loop.
+            then.status(200)
+                .delay(Duration::from_millis(200))
+                .json_body(serde_json::json!({"ok": true, "result": []}));
+        })
+        .await;
+    unsafe {
+        std::env::set_var("TELEGRAM_BOT_TOKEN", "TEST-TOKEN");
+        std::env::set_var("TELEGRAM_API_URL", server.base_url());
+    }
+    server
+}
+
 #[tokio::test]
 #[serial]
 async fn test_service_starter_initialization() {
@@ -67,6 +97,7 @@ async fn test_service_starter_initialization() {
     unsafe {
         std::env::set_var("MS_PORT", "3000");
     }
+    let _telegram = start_fake_telegram().await;
 
     println!("Testing service starter initialization...");
     // Spawn service_starter in a background task
@@ -111,6 +142,7 @@ async fn test_service_starter_graceful_shutdown() {
     unsafe {
         std::env::set_var("MS_PORT", "9998");
     }
+    let _telegram = start_fake_telegram().await;
 
     // Spawn service_starter in a background task
     let server_handle = tokio::spawn(async move {
@@ -156,4 +188,22 @@ async fn test_service_starter_graceful_shutdown() {
         "Server should not respond after abort"
     );
     println!("Service starter graceful shutdown test: Server stopped successfully");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_service_starter_without_telegram_token_exits() {
+    setup_test_env();
+    // Empty rather than removed: dotenv() inside service_starter never overwrites an
+    // existing variable, so a real token in .env can't sneak back in.
+    unsafe {
+        std::env::set_var("TELEGRAM_BOT_TOKEN", "");
+    }
+
+    let clean_shutdown = tokio::time::timeout(Duration::from_secs(5), service_starter())
+        .await
+        .expect("service_starter should return at once without a token");
+
+    // false = main() exits with code 1
+    assert!(!clean_shutdown);
 }

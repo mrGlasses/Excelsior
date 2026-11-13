@@ -1,4 +1,5 @@
 pub mod simple_handler;
+pub mod telegram_handler;
 pub mod worker_handler;
 
 #[cfg(test)]
