@@ -1,18 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Message {
     pub code: i32,
     pub message_text: String,
-}
-
-impl Default for Message {
-    fn default() -> Message {
-        Message {
-            code: Default::default(),
-            message_text: Default::default(),
-        }
-    }
 }
 
 #[derive(Deserialize)]
