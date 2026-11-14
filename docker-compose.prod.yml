@@ -33,8 +33,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      mongodb:
-        condition: service_healthy
+      # No MongoDB here: the app doesn't use it, and on 2026-11-13 a broken Mongo kept
+      # the app from starting at all.
     networks:
       - app-network
     healthcheck:
@@ -58,14 +58,19 @@ services:
   # ============================================
   db:
     container_name: mariadb-prod
-    image: mariadb:latest
+    # Image versions are pinned (major.minor): never ":latest" for a database.
+    # A re-download of ":latest" can jump a major version and refuse the old data
+    # (2026-11-13: mongo latest went 8.2 -> 9.0). Upgrade on purpose, by editing the tag.
+    image: mariadb:13.0
     platform: linux/arm64
     restart: always
     ports:
-      - "1021:3306"  # Only accessible from localhost
+      - "127.0.0.1:1021:3306"  # Only accessible from the VPS itself (was open on all interfaces)
     environment:
       MARIADB_ROOT_PASSWORD: ${DATABASE_PSWD}
       MARIADB_DATABASE: ${DATABASE_NAME}
+      # Run mariadb-upgrade by itself when the version changes (patch updates within 13.0).
+      MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - mariadb-data:/var/lib/mysql
       # AUTO-RUN MIGRATIONS ON FIRST START
@@ -90,7 +95,9 @@ services:
   # MongoDB (Production)
   # ============================================
   mongodb:
-    image: mongo:latest
+    # Pinned to the version that wrote the data (featureCompatibilityVersion 8.2).
+    # Going to 9.0 means setting the FCV first, not just changing this tag.
+    image: mongo:8.2
     container_name: mongodb-prod
     platform: linux/arm64
     restart: always
@@ -119,7 +126,7 @@ services:
   # Redis (Production)
   # ============================================
   redis:
-    image: redis:latest
+    image: redis:8.10
     container_name: redis-prod
     platform: linux/arm64
     restart: always
@@ -141,16 +148,18 @@ services:
   # ============================================
   grafana-allinone:
     container_name: grafana-otel-prod
-    image: grafana/otel-lgtm:latest
+    image: grafana/otel-lgtm:0.41.0
     platform: linux/arm64
     restart: always
     ports:
-      - "3050:3000"    # Grafana UI (access via SSH tunnel or VPN)
+      - "127.0.0.1:3050:3000"    # Grafana UI: only via SSH tunnel, e.g. ssh -L 3050:127.0.0.1:3050 user@vps
       - "127.0.0.1:4317:4317"    # OTLP gRPC (internal only)
       - "127.0.0.1:4318:4318"    # OTLP HTTP (internal only)
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      # Keep logs (Loki) for 3 days only: small VPS disk.
+      - LOKI_EXTRA_ARGS=-compactor.retention-enabled=true -compactor.delete-request-store=filesystem -store.retention=72h
     volumes:
       - grafana-data:/var/lib/grafana
     networks:
