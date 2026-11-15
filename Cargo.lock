@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "excelsior"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -527,6 +527,7 @@ dependencies = [
  "serial_test",
  "sqlx",
  "tokio",
+ "tokio-util",
  "tower-http",
  "tracing",
  "tracing-subscriber",

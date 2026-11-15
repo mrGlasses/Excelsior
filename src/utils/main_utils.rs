@@ -1,18 +1,23 @@
 use crate::database::connection::{init_db, run_migrations};
 use crate::engine::db_engine::DbPool;
+use crate::handlers::outbox_handler::{outbox_settings_from, run_outbox_worker};
+use crate::handlers::worker_handler::{heartbeat_loop, stuck_loop};
 use crate::routes::create_routes;
 use crate::state;
 use crate::utils::un_utils::start_message;
+use crate::utils::workers::{Workers, shutdown_timeout_from};
 use dotenv::dotenv;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
-use tracing::{error, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub async fn service_starter() {
+// Returns true for a clean shutdown, false if a worker failed (main exits with code 1).
+pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
@@ -23,6 +28,9 @@ pub async fn service_starter() {
         error!("Failed to apply database migrations: {}", err);
         panic!("Failed to apply database migrations: {}", err);
     }
+    // The outbox worker gets its own handle to the pool (a Pool is a cheap, shared handle).
+    let outbox_pool = db_pool.clone();
+    let outbox_settings = outbox_settings_from(std::env::var("OUTBOX_MAX_ATTEMPTS").ok());
     let app_state = state::AppState {
         db_pool: Arc::new(DbPool::Real(db_pool)),
     };
@@ -36,13 +44,44 @@ pub async fn service_starter() {
 
     let server = TcpListener::bind(&addr).await.unwrap();
 
+    // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
+    let shutdown = CancellationToken::new();
+
+    let shutdown_timeout =
+        shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
+    let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
+    workers.spawn("heartbeat", heartbeat_loop);
+    workers.spawn("outbox", move |shutdown| {
+        run_outbox_worker(outbox_pool, outbox_settings, shutdown)
+    });
+    if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
+        workers.spawn("stuck", stuck_loop);
+    }
+
     //info!("Excelsior listening on {}", addr); //tracing mode startup
     start_message(addr.to_string()).await; //default mode startup
 
-    axum::serve(server, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("server error");
+    let wait_for_signal = async {
+        tokio::select! {
+            _ = shutdown_signal() => shutdown.cancel(),
+            // A worker failed and cancelled the token first: stop listening for signals.
+            _ = shutdown.cancelled() => {},
+        }
+    };
+    let http_server = async {
+        axum::serve(server, app)
+            .with_graceful_shutdown(shutdown.clone().cancelled_owned())
+            .await
+            .expect("server error");
+    };
+
+    // All three run together, and all three are dropped together if this function is
+    // cancelled (as the integration tests do), so nothing keeps running in the background.
+    let (_, _, any_worker_failed) =
+        tokio::join!(wait_for_signal, http_server, workers.run_until_shutdown());
+    info!("server stopped");
+
+    !any_worker_failed
 }
 pub async fn shutdown_signal() {
     let ctrl_c = async {

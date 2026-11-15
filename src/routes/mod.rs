@@ -1,4 +1,5 @@
 use crate::handlers::db_handler::{create_user, create_user_pair, get_users};
+use crate::handlers::outbox_handler::create_demo_event;
 use crate::handlers::simple_handler::get_pong;
 use crate::state::AppState;
 use axum::routing::post;
@@ -19,6 +20,7 @@ pub fn create_routes(state: AppState) -> Router {
         .route("/users", get(get_users))
         .route("/users", post(create_user))
         .route("/users/pair", post(create_user_pair))
+        .route("/demo-events", post(create_demo_event)) // outbox demo: {"msg": "hi"}
         .layer((
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))

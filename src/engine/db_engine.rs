@@ -1,6 +1,7 @@
 use crate::domain::database::User;
+use crate::engine::outbox_engine::insert_outbox_event;
 use crate::state::AppState;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use axum::extract::State;
 #[cfg(test)]
 use mockall::automock;
@@ -19,6 +20,7 @@ pub trait DatabaseExecutor: Send + Sync {
     async fn execute_get_users(&self) -> Result<Vec<User>>;
     async fn execute_create_user(&self, name: String) -> Result<String>;
     async fn execute_create_user_pair(&self, first: String, second: String) -> Result<String>;
+    async fn execute_create_demo_event(&self, msg: String) -> Result<String>;
 }
 
 // Query functions take `&mut PgConnection` instead of the pool, so the same function
@@ -62,6 +64,20 @@ impl DatabaseExecutor for Pool<Postgres> {
         tx.commit().await?;
         Ok("OK".to_string())
     }
+
+    // Demo for the outbox (OB-1): the event is written inside a transaction. Real code
+    // would also change its own data in that same transaction, before the event.
+    async fn execute_create_demo_event(&self, msg: String) -> Result<String> {
+        let mut tx = self.begin().await?;
+        insert_outbox_event(&mut tx, "DemoEvent", &serde_json::json!({ "msg": msg })).await?;
+        if msg == "rollback" {
+            // Fails on purpose AFTER the insert: dropping `tx` rolls the event back,
+            // so it never exists and the worker never sees it.
+            return Err(anyhow!("demo failure after insert, rolled back"));
+        }
+        tx.commit().await?;
+        Ok("OK".to_string())
+    }
 }
 
 #[async_trait::async_trait]
@@ -89,6 +105,14 @@ impl DatabaseExecutor for DbPool {
             DbPool::Mock(mock) => mock.execute_create_user_pair(first, second).await,
         }
     }
+
+    async fn execute_create_demo_event(&self, msg: String) -> Result<String> {
+        match self {
+            DbPool::Real(pool) => pool.execute_create_demo_event(msg).await,
+            #[cfg(test)]
+            DbPool::Mock(mock) => mock.execute_create_demo_event(msg).await,
+        }
+    }
 }
 
 pub async fn get_users_db_call(State(state): State<AppState>) -> Result<Vec<User>> {
@@ -105,4 +129,11 @@ pub async fn create_user_pair_db_call(
     second: String,
 ) -> Result<String> {
     state.db_pool.execute_create_user_pair(first, second).await
+}
+
+pub async fn create_demo_event_db_call(
+    State(state): State<AppState>,
+    msg: String,
+) -> Result<String> {
+    state.db_pool.execute_create_demo_event(msg).await
 }
