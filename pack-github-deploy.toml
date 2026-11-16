@@ -1,0 +1,6 @@
+name = "github-deploy"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = ""
+requires = []
+description = "GitHub Actions CI and deploy to a VPS with Docker Compose"
