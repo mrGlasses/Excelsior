@@ -1,0 +1,6 @@
+name = "telegram-connection"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = "EX0023"
+requires = ["background-tasks"]
+description = "Telegram bot running as a background worker"
