@@ -43,6 +43,34 @@ it re-checks every 5 seconds anyway, retries failing events up to `OUTBOX_MAX_AT
 and `FOR UPDATE SKIP LOCKED` lets several app copies share the work without doubles.
 Demo: `curl -X POST localhost:3000/demo-events -H 'Content-Type: application/json' -d '{"msg":"hi"}'`.
 
+## Versioning
+
+Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs never edit it:
+they get it when they're updated with `main` (`git merge main`), so every pack shows the version
+of the base it's built on.
+
+- **Major** (3.0.0): breaks the packs or projects built on Excelsior: the D.A.F.T. layout, where
+  routes and workers are wired, the startup flow (`service_starter()`, `AppState`), a breaking
+  Axum/Tokio/sqlx major upgrade, or a new Rust edition/minimum version. Every pack is updated and retested.
+- **Minor** (2.2.0): something new in the base that doesn't break existing code (a middleware,
+  a utility, an optional env var with a default).
+- **Patch** (2.1.2): fixes only: security/dependency bumps, bug and test fixes, docs.
+
+Adding or updating a pack does not change Excelsior's version. Each pack has its own file at the
+root of the repo, `pack-<name>.toml`, that only that pack edits (so merging packs never conflicts on it):
+
+```toml
+name = "outbox-postgresql"
+version = "1.0.0"     # the pack's own version
+excelsior = "2.1"     # the Excelsior major.minor it was built and tested on
+ticket = "EX0028"
+requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
+```
+
+`ls pack-*` lists the packs in a project. Every name in `requires` needs its own `pack-*.toml` too.
+After a minor or major Excelsior version, each pack is updated with `main`, retested, and its
+`excelsior` value changed.
+
 ## Contributing
 
 Thanks for your help in improving the project! If you're willing to contribute, you'll have to follow several rules:
@@ -78,6 +106,7 @@ several other libraries, including:
 
 - 1.0.0: Initial release.
 - 2.0.0: Improving the code coverage and upgrading the dependencies.
+- 2.1.2: Security fixes (RUSTSEC-2026-0007, -0258, -0477, -0285, -0382, -0391, RUSTSEC-2025-0055), versioning rules and `pack-<name>.toml` files.
 
 ## License
 
