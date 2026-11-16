@@ -1,0 +1,6 @@
+name = "redis-connection"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = "EX0009"
+requires = []
+description = "Redis connection"
