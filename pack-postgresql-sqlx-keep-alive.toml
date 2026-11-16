@@ -1,0 +1,6 @@
+name = "postgresql-sqlx-keep-alive"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = "EX0003"
+requires = []
+description = "PostgreSQL with sqlx: migrations on startup, transactions, pool size env, uuid/json"
