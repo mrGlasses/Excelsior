@@ -28,10 +28,24 @@ fn setup_test_env() {
 
 // Helper function to create a test database connection
 async fn create_test_db_pool() -> MySqlPool {
-    database::connection::init_db()
+    let pool = database::connection::init_db()
         .await
-        .expect("Failed to connect to test database")
+        .expect("Failed to connect to test database");
+    // Same migrations the app runs at startup, but only once per test run: on MariaDB,
+    // parallel tests migrating a fresh database at the same moment collide
+    // ("Duplicate entry '1'", then a "dirty" migration). A tokio Mutex works across the
+    // separate runtimes each #[tokio::test] creates.
+    let mut migrated = MIGRATED.lock().await;
+    if !*migrated {
+        database::connection::run_migrations(&pool)
+            .await
+            .expect("Failed to apply migrations to test database");
+        *migrated = true;
+    }
+    pool
 }
+
+static MIGRATED: tokio::sync::Mutex<bool> = tokio::sync::Mutex::const_new(false);
 
 // Helper function to create a test app instance
 async fn spawn_app() -> String {
@@ -130,6 +144,9 @@ async fn test_create_user() {
 #[serial]
 async fn test_service_starter_initialization() {
     setup_test_env();
+    // Migrate through the shared once-only path first, so service_starter() finds
+    // the database up to date instead of racing other tests on a fresh database.
+    let _ = create_test_db_pool().await;
     // .env.test sets MS_PORT=0 (random port) for tests that bind their own listener;
     // service_starter() reads MS_PORT directly, so it needs a fixed value to match
     // the address this test checks below.
@@ -175,6 +192,9 @@ async fn test_service_starter_initialization() {
 #[serial]
 async fn test_service_starter_graceful_shutdown() {
     setup_test_env();
+    // Migrate through the shared once-only path first, so service_starter() finds
+    // the database up to date instead of racing other tests on a fresh database.
+    let _ = create_test_db_pool().await;
     // Distinct fixed port from test_service_starter_initialization above; both tests
     // are #[serial] so mutating this shared env var between them is safe.
     unsafe {

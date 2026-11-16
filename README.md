@@ -20,6 +20,13 @@ in the "exp-pack" folder is an extra feature/example to add to your project.
 
 Some IDEs allow you to use a repository as a base to avoid cloning, see with your IDE.
 
+### Database migrations
+
+The SQL files in `src/database/migrations` (`0001_...sql`, `0002_...sql`, ...) are compiled
+into the app and applied automatically at startup by sqlx, recorded in `_sqlx_migrations`.
+Never edit a file that has already been applied (the app refuses to start if you do); add a
+new numbered file instead. SQL files are kept LF by `.gitattributes` (sqlx checksums them).
+
 ## Versioning
 
 Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs never edit it:

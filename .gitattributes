@@ -1,0 +1,4 @@
+# sqlx checksums migration files byte by byte: the same migration with CRLF (Windows
+# checkout) and LF (Linux/Docker/CI) would look "modified" and the app would refuse to
+# start. Keep every SQL file LF on every machine.
+*.sql text eol=lf
