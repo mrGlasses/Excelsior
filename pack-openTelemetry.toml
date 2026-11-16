@@ -1,0 +1,6 @@
+name = "openTelemetry"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = ""
+requires = []
+description = "OpenTelemetry tracing integration"
