@@ -1,0 +1,6 @@
+name = "background-tasks"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = "EX0026"
+requires = []
+description = "Background workers with shared shutdown, failure exit code and a shutdown timeout"
