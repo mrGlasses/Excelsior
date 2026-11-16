@@ -1,0 +1,6 @@
+name = "http-external-call"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = ""
+requires = []
+description = "Calling another service with reqwest"

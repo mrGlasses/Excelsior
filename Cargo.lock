@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "excelsior"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "axum",
  "dotenv",
