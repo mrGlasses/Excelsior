@@ -1,5 +1,6 @@
-pub mod cache;
 pub mod general;
+pub mod cache;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 #[cfg(test)]
 mod tests;

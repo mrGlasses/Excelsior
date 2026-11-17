@@ -11,6 +11,7 @@ mod handlers;
 mod routes;
 mod state;
 mod utils;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 #[tokio::main]
 async fn main() {
