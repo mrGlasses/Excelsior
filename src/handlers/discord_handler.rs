@@ -3,6 +3,7 @@
 // Adding a command = one line in `commands()` + one line in `handle_command`.
 use crate::domain::discord::{DiscordButton, DiscordCommand, DiscordInteraction, InteractionKind};
 use crate::engine::discord_engine::{DiscordApi, DiscordExecutor, to_discord_interaction};
+use crate::state::AppState;
 use crate::utils::workers::Workers;
 use anyhow::{Result, anyhow};
 use std::time::Duration;
@@ -52,7 +53,7 @@ pub fn commands() -> Vec<DiscordCommand> {
 }
 
 // Called from utils/pack_workers.rs. False (the app exits with code 1) without a token.
-pub fn start(workers: &mut Workers) -> bool {
+pub fn start(workers: &mut Workers, _state: &AppState) -> bool {
     let token = match std::env::var("DISCORD_TOKEN") {
         Ok(token) if !token.trim().is_empty() => token,
         _ => {

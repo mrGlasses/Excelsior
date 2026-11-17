@@ -1,4 +1,6 @@
 use crate::routes::create_routes;
+use crate::state::build_app_state;
+use crate::utils::pack_tracing::{pack_shutdown, pack_tracing_layers};
 use crate::utils::pack_workers::start_pack_workers;
 use crate::utils::un_utils::start_message;
 use crate::utils::workers::{Workers, shutdown_timeout_from};
@@ -16,6 +18,9 @@ pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
+    // Each pack connects to its service here (see state.rs).
+    let state = build_app_state().await;
+
     // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
     let shutdown = CancellationToken::new();
 
@@ -24,11 +29,11 @@ pub async fn service_starter() -> bool {
     let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
     // Before the server starts, so a pack with a missing setting stops the app right away
     // (the workers already spawned are stopped when `workers` is dropped).
-    if !start_pack_workers(&mut workers) {
+    if !start_pack_workers(&mut workers, &state) {
         return false;
     }
 
-    let app = create_routes();
+    let app = create_routes(state);
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
     let port = pre_port.parse().expect("MS_PORT must be a number.");
@@ -59,6 +64,7 @@ pub async fn service_starter() -> bool {
     let (_, _, any_worker_failed) =
         tokio::join!(wait_for_signal, http_server, workers.run_until_shutdown());
     info!("server stopped");
+    pack_shutdown();
 
     !any_worker_failed
 }
@@ -92,6 +98,7 @@ pub async fn setup_tracing() {
     // service_starter(); a global subscriber can only be set once per process, and any
     // call after the first is expected to no-op rather than panic.
     let _ = tracing_subscriber::registry()
+        .with(pack_tracing_layers())
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
