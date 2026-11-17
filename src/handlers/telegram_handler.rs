@@ -2,6 +2,7 @@
 // Adding a command = one function below + one line in `handle_command`.
 use crate::domain::telegram::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update};
 use crate::engine::telegram_engine::{DEFAULT_TELEGRAM_API_URL, TelegramApi, TelegramExecutor};
+use crate::state::AppState;
 use crate::utils::workers::Workers;
 use anyhow::Result;
 use std::time::Duration;
@@ -14,7 +15,7 @@ pub const POLL_TIMEOUT_SECS: u64 = 25;
 pub const RETRY_DELAY: Duration = Duration::from_secs(5);
 
 // Called from utils/pack_workers.rs. False (the app exits with code 1) without a token.
-pub fn start(workers: &mut Workers) -> bool {
+pub fn start(workers: &mut Workers, _state: &AppState) -> bool {
     let token = match std::env::var("TELEGRAM_BOT_TOKEN") {
         Ok(token) if !token.trim().is_empty() => token,
         _ => {
