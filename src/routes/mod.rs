@@ -1,7 +1,6 @@
-use crate::handlers::simple_handler::{
-    get_params, get_pong, get_question, post_body_data, protected_route,
-};
-use axum::{Router, routing::get, routing::post};
+use crate::handlers::simple_handler::get_pong;
+use crate::state::AppState;
+use axum::{Router, routing::get};
 use http::StatusCode;
 use std::time::Duration;
 use tower_http::classify::ServerErrorsFailureClass;
@@ -12,13 +11,18 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 use tracing::Span;
 
-pub fn create_routes() -> Router {
+// The pack registry for routes. A pack puts its routes in its own file, next to this one
+// (`<pack>_routes.rs` with `pub fn routes() -> Router<AppState>`), and adds ONE
+// `pub mod <pack>_routes;` line here and ONE `.merge(...)` line in create_routes().
+// mod.rs files are `merge=union` in .gitattributes, so packs adding lines never conflict.
+pub mod simple_requests_routes;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
+
+pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/ping", get(get_pong))
-        .route("/protected-enter", get(protected_route))
-        .route("/params/{param_1}/another_p/{param_2}", get(get_params)) // localhost/params/1/another_p/textTest
-        .route("/question_separator", get(get_question)) // localhost/question_separator?name=Jack&age=25&active=true
-        .route("/body-data", post(post_body_data))
+        .merge(simple_requests_routes::routes())
+        // One line per pack, e.g. `.merge(db_routes::routes())`
         .layer((
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
@@ -41,6 +45,5 @@ pub fn create_routes() -> Router {
             RequestBodyLimitLayer::new(1024 * 1024 * 10), // 10MB limit
             TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(60)),
         ))
+        .with_state(state)
 }
-
-//more than 1 route file? search for "axum merge routes"

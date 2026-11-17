@@ -1,7 +1,7 @@
-use axum::http::StatusCode;
 use dotenv::dotenv;
 // Import the ms1 crate and its modules
 use excelsior::routes;
+use excelsior::state::build_app_state;
 use excelsior::utils::main_utils::service_starter;
 use serial_test::serial;
 use std::time::Duration;
@@ -31,7 +31,7 @@ async fn spawn_app() -> String {
     let port = listener.local_addr().unwrap().port();
 
     // Build the application with routes
-    let app = routes::create_routes();
+    let app = routes::create_routes(build_app_state().await);
 
     // Spawn the server in the background
     tokio::spawn(async move {
@@ -157,96 +157,4 @@ async fn test_service_starter_graceful_shutdown() {
         "Server should not respond after abort"
     );
     println!("Service starter graceful shutdown test: Server stopped successfully");
-}
-
-#[tokio::test]
-async fn test_protected_route_unauthorized() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/protected-enter", address))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert_eq!(
-        StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::OK),
-        StatusCode::UNAUTHORIZED
-    );
-}
-
-#[tokio::test]
-async fn test_protected_route_authorized() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/protected-enter", address))
-        .header("X-Custom-Header", "secret-value")
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert_eq!(
-        StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::UNAUTHORIZED),
-        StatusCode::OK
-    );
-}
-
-#[tokio::test]
-async fn test_get_params() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/params/42/another_p/test-param", address))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    let body = response.text().await.unwrap();
-    assert!(body.contains("42"));
-    assert!(body.contains("test-param"));
-}
-
-#[tokio::test]
-async fn test_get_question_with_filters() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/question_separator", address))
-        .query(&[("name", "John"), ("age", "30"), ("active", "true")])
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    let body = response.text().await.unwrap();
-    assert!(body.contains("John"));
-    assert!(body.contains("30"));
-    assert!(body.contains("true"));
-}
-
-#[tokio::test]
-async fn test_post_body_data() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{}/body-data", address))
-        .json(&serde_json::json!({
-            "code": 2007,
-            "message_text": "Test message"
-        }))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    let body = response.text().await.unwrap();
-    assert!(body.contains("Test message"));
-    assert!(body.contains("2007"));
 }

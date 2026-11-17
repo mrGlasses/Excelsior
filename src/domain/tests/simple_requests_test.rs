@@ -1,4 +1,4 @@
-use crate::domain::general::{FilterParams, Message, Params};
+use crate::domain::simple_requests::{FilterParams, Message, Params};
 use serde_json::from_str;
 
 #[test]

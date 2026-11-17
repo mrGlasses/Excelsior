@@ -1,6 +1,6 @@
 name = "simple-requests"
-version = "1.0.0"
-excelsior = "2.1"
+version = "2.0.0"
+excelsior = "3.1"
 ticket = ""
 requires = []
 description = "Simple request handlers examples"
