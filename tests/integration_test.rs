@@ -1,6 +1,7 @@
 use dotenv::dotenv;
-// Import the excelsior crate and its modules
+// Import the ms1 crate and its modules
 use excelsior::routes;
+use excelsior::state::build_app_state;
 use excelsior::utils::main_utils::service_starter;
 use serial_test::serial;
 use std::time::Duration;
@@ -30,7 +31,7 @@ async fn spawn_app() -> String {
     let port = listener.local_addr().unwrap().port();
 
     // Build the application with routes
-    let app = routes::create_routes();
+    let app = routes::create_routes(build_app_state().await);
 
     // Spawn the server in the background
     tokio::spawn(async move {
