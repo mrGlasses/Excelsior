@@ -1,5 +1,5 @@
 name = "discord-connection"
-version = "1.1.0"
+version = "1.1.1"
 excelsior = "3.0"
 ticket = "EX0024"
 requires = ["background-tasks"]
