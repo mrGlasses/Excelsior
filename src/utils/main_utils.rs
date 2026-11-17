@@ -98,7 +98,9 @@ pub async fn setup_tracing() {
     // service_starter(); a global subscriber can only be set once per process, and any
     // call after the first is expected to no-op rather than panic.
     let _ = tracing_subscriber::registry()
-        .with(pack_tracing_layers())
+        // Only when a pack gives layers: an empty list answers "not interested" to every
+        // log call, which would switch off all of the app's own logs.
+        .with(Some(pack_tracing_layers()).filter(|layers| !layers.is_empty()))
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
