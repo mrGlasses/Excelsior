@@ -132,6 +132,7 @@ several other libraries, including:
 - 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
 - 3.1.2: Fix: the app's own logs were switched off when no pack adds a tracing layer (since 3.0.0).
 - 3.1.3: Marker at the end of `Cargo.toml`: packs add new sections below it.
+- 3.1.4: `EXTERNAL_SERVICE_URL` leaves `main`'s `.env` files: only `http-external-call` uses it, and it adds the line itself.
 
 ## License
 
