@@ -1,16 +1,36 @@
 // The Telegram bot: a background worker that long-polls Telegram and answers commands.
 // Adding a command = one function below + one line in `handle_command`.
 use crate::domain::telegram::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update};
-use crate::engine::telegram_engine::TelegramExecutor;
+use crate::engine::telegram_engine::{DEFAULT_TELEGRAM_API_URL, TelegramApi, TelegramExecutor};
+use crate::utils::workers::Workers;
 use anyhow::Result;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 // How long one getUpdates call waits for something to happen (Telegram allows up to 50).
 pub const POLL_TIMEOUT_SECS: u64 = 25;
 // After a network/API error, wait this long before polling again.
 pub const RETRY_DELAY: Duration = Duration::from_secs(5);
+
+// Called from utils/pack_workers.rs. False (the app exits with code 1) without a token.
+pub fn start(workers: &mut Workers) -> bool {
+    let token = match std::env::var("TELEGRAM_BOT_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => token,
+        _ => {
+            error!("TELEGRAM_BOT_TOKEN is missing");
+            return false;
+        }
+    };
+    let api_url =
+        std::env::var("TELEGRAM_API_URL").unwrap_or_else(|_| DEFAULT_TELEGRAM_API_URL.to_string());
+    let api = TelegramApi::new(&api_url, &token, POLL_TIMEOUT_SECS)
+        .expect("Failed to build the Telegram HTTP client");
+    workers.spawn("telegram", move |shutdown| {
+        run_telegram_bot(Box::new(api), shutdown)
+    });
+    true
+}
 
 // The worker. Fails (and so stops the app) only if the bot can't log in at all,
 // e.g. a wrong token; network hiccups while polling are logged and retried.

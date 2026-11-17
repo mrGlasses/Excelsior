@@ -1,5 +1,5 @@
 name = "telegram-connection"
-version = "1.0.0"
+version = "1.0.1"
 excelsior = "2.1"
 ticket = "EX0023"
 requires = ["background-tasks"]

@@ -1,7 +1,5 @@
-use crate::engine::telegram_engine::{DEFAULT_TELEGRAM_API_URL, TelegramApi};
-use crate::handlers::telegram_handler::{POLL_TIMEOUT_SECS, run_telegram_bot};
-use crate::handlers::worker_handler::{heartbeat_loop, stuck_loop};
 use crate::routes::create_routes;
+use crate::utils::pack_workers::start_pack_workers;
 use crate::utils::un_utils::start_message;
 use crate::utils::workers::{Workers, shutdown_timeout_from};
 use dotenv::dotenv;
@@ -9,7 +7,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -18,18 +16,17 @@ pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
-    // Checked first, so a missing token stops the app before anything else starts.
-    let telegram_token = match std::env::var("TELEGRAM_BOT_TOKEN") {
-        Ok(token) if !token.trim().is_empty() => token,
-        _ => {
-            error!("TELEGRAM_BOT_TOKEN is missing");
-            return false;
-        }
-    };
-    let telegram_api_url =
-        std::env::var("TELEGRAM_API_URL").unwrap_or_else(|_| DEFAULT_TELEGRAM_API_URL.to_string());
-    let telegram_api = TelegramApi::new(&telegram_api_url, &telegram_token, POLL_TIMEOUT_SECS)
-        .expect("Failed to build the Telegram HTTP client");
+    // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
+    let shutdown = CancellationToken::new();
+
+    let shutdown_timeout =
+        shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
+    let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
+    // Before the server starts, so a pack with a missing setting stops the app right away
+    // (the workers already spawned are stopped when `workers` is dropped).
+    if !start_pack_workers(&mut workers) {
+        return false;
+    }
 
     let app = create_routes();
 
@@ -39,20 +36,6 @@ pub async fn service_starter() -> bool {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let server = TcpListener::bind(&addr).await.unwrap();
-
-    // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
-    let shutdown = CancellationToken::new();
-
-    let shutdown_timeout =
-        shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
-    let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
-    workers.spawn("heartbeat", heartbeat_loop);
-    workers.spawn("telegram", move |shutdown| {
-        run_telegram_bot(Box::new(telegram_api), shutdown)
-    });
-    if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
-        workers.spawn("stuck", stuck_loop);
-    }
 
     //info!("Excelsior listening on {}", addr); //tracing mode startup
     start_message(addr.to_string()).await; //default mode startup
