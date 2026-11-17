@@ -28,12 +28,14 @@ and running `cargo build`:
 git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 ```
 
+
 ### Environment variables
 
+- `DATABASE_MAX_CONNECTIONS` — optional, Postgres connection pool size (default `5`).
 - `WORKER_SHUTDOWN_TIMEOUT_SECS` — optional, seconds each background worker gets to stop on shutdown before it's abandoned (default `8`, under Docker's 10-second grace period).
 - `DEMO_HEARTBEAT_FAIL_AFTER` — optional, demo only: makes the `heartbeat` worker fail after that many beats, so the app exits with code 1.
 - `DEMO_STUCK_WORKER` — optional, demo only: `true` starts a worker that ignores the stop signal, to see the shutdown timeout.
-- `OUTBOX_MAX_ATTEMPTS` � optional, how many times the outbox worker tries a failing event before setting it aside (default `10`).
+- `OUTBOX_MAX_ATTEMPTS` — optional, how many times the outbox worker tries a failing event before setting it aside (default `10`).
 
 ### Outbox (PostgreSQL)
 
@@ -43,12 +45,6 @@ describe (`insert_outbox_event(&mut tx, ...)`), and handled by the `outbox` work
 it re-checks every 5 seconds anyway, retries failing events up to `OUTBOX_MAX_ATTEMPTS`,
 and `FOR UPDATE SKIP LOCKED` lets several app copies share the work without doubles.
 Demo: `curl -X POST localhost:3000/demo-events -H 'Content-Type: application/json' -d '{"msg":"hi"}'`.
-After merging packs, run `cargo fmt` once: git keeps every pack's `mod` line, but not in the
-alphabetical order rustfmt wants.
-
-### Environment variables
-
-- `DATABASE_MAX_CONNECTIONS` — optional, Postgres connection pool size (default `5`).
 
 ### Database migrations
 
@@ -96,6 +92,8 @@ the registries below). For that to work:
   around the same existing line by three packs get duplicated by git. `rustfmt.toml` keeps
   `cargo fmt` from sorting them. The `engine/`, `database/` and `domain/tests/` modules
   already exist, so a pack never creates its own `mod.rs`.
+- New `Cargo.toml` sections (`[profile.release]`, `[features]`...) go below the marker at the
+  end of the file; dependency lines go in their `[dependencies]` / `[dev-dependencies]` lists.
 - A dependency used by two packs goes in the code they both build on, never in both. The
   common ones (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) are
   already in `main`.
@@ -156,6 +154,7 @@ several other libraries, including:
 - 3.1.0: Marker comments for `mod` lines and `rustfmt.toml` (`reorder_modules = false`), empty `engine/`, `database/` and `domain/tests/` modules, `lib.rs`/`main.rs` merged as union, `.env` files end with a newline.
 - 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
 - 3.1.2: Fix: the app's own logs were switched off when no pack adds a tracing layer (since 3.0.0).
+- 3.1.3: Marker at the end of `Cargo.toml`: packs add new sections below it.
 
 ## License
 
