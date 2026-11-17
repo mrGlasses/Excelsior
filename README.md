@@ -73,7 +73,12 @@ Any set of packs must merge without conflicts. `.gitattributes` makes git keep b
 the files packs add lines to (`.env`, `.env.test`, `README.md`, `Cargo.toml`, `mod.rs` files and
 the registries below). For that to work:
 
-- Only **add** lines to shared files; never change or reorder an existing line.
+- Only **add** lines to shared files; never change, reorder or delete an existing line.
+- `mod` lines go right **above the marker comment** in each `mod.rs`, `lib.rs` and `main.rs`
+  ("Packs add their `mod` lines above this one"), never in alphabetical order: lines added
+  around the same existing line by three packs get duplicated by git. `rustfmt.toml` keeps
+  `cargo fmt` from sorting them. The `engine/`, `database/` and `domain/tests/` modules
+  already exist, so a pack never creates its own `mod.rs`.
 - A dependency used by two packs goes in the code they both build on, never in both. The
   common ones (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) are
   already in `main`.
@@ -131,6 +136,7 @@ several other libraries, including:
 - 2.1.3: Packs merge together without conflicts (`.gitattributes`, `Cargo.lock` merge driver), tracing set up once in tests.
 - 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
 - 3.0.1: The dependencies many packs share (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) live in `main`; README notes on merging packs.
+- 3.1.0: Marker comments for `mod` lines and `rustfmt.toml` (`reorder_modules = false`), empty `engine/`, `database/` and `domain/tests/` modules, `lib.rs`/`main.rs` merged as union, `.env` files end with a newline.
 
 ## License
 

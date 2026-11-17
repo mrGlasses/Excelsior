@@ -7,6 +7,8 @@
 README.md merge=union
 Cargo.toml merge=union
 **/mod.rs merge=union
+src/lib.rs merge=union
+src/main.rs merge=union
 # The pack registries: one line per pack (pack_workers.rs lives in exp-pack/background-tasks).
 src/state.rs merge=union
 src/utils/pack_tracing.rs merge=union

@@ -1,8 +1,9 @@
 pub mod main_utils;
 pub mod pack_tracing;
-pub mod pack_workers;
 pub mod un_utils;
+pub mod pack_workers;
 pub mod workers;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 mod constants;
 
