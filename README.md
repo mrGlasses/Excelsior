@@ -78,6 +78,8 @@ the registries below). For that to work:
   around the same existing line by three packs get duplicated by git. `rustfmt.toml` keeps
   `cargo fmt` from sorting them. The `engine/`, `database/` and `domain/tests/` modules
   already exist, so a pack never creates its own `mod.rs`.
+- New `Cargo.toml` sections (`[profile.release]`, `[features]`...) go below the marker at the
+  end of the file; dependency lines go in their `[dependencies]` / `[dev-dependencies]` lists.
 - A dependency used by two packs goes in the code they both build on, never in both. The
   common ones (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) are
   already in `main`.
@@ -136,6 +138,9 @@ several other libraries, including:
 - 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
 - 3.0.1: The dependencies many packs share (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) live in `main`; README notes on merging packs.
 - 3.1.0: Marker comments for `mod` lines and `rustfmt.toml` (`reorder_modules = false`), empty `engine/`, `database/` and `domain/tests/` modules, `lib.rs`/`main.rs` merged as union, `.env` files end with a newline.
+- 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
+- 3.1.2: Fix: the app's own logs were switched off when no pack adds a tracing layer (since 3.0.0).
+- 3.1.3: Marker at the end of `Cargo.toml`: packs add new sections below it.
 
 ## License
 
