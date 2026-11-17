@@ -1,5 +1,5 @@
 name = "background-tasks"
-version = "2.0.0"
+version = "2.0.1"
 excelsior = "3.0"
 ticket = "EX0026"
 requires = []
