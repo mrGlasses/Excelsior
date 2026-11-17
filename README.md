@@ -127,6 +127,7 @@ several other libraries, including:
 - 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
 - 3.0.1: The dependencies many packs share (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) live in `main`; README notes on merging packs.
 - 3.1.0: Marker comments for `mod` lines and `rustfmt.toml` (`reorder_modules = false`), empty `engine/`, `database/` and `domain/tests/` modules, `lib.rs`/`main.rs` merged as union, `.env` files end with a newline.
+- 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
 
 ## License
 
