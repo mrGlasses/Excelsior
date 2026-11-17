@@ -9,6 +9,7 @@ use std::sync::Arc;
 fn state_with_mock(mock_cache: MockCacheExecutor) -> AppState {
     AppState {
         cache_pool: Arc::new(CachePool::Mock(mock_cache)),
+        ..Default::default()
     }
 }
 

@@ -1,10 +1,6 @@
-use crate::handlers::cache_handler::*;
 use crate::handlers::simple_handler::get_pong;
 use crate::state::AppState;
-use axum::{
-    Router,
-    routing::{delete, get, post, put},
-};
+use axum::{Router, routing::get};
 use http::StatusCode;
 use std::time::Duration;
 use tower_http::classify::ServerErrorsFailureClass;
@@ -15,15 +11,17 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 use tracing::Span;
 
+// The pack registry for routes. A pack puts its routes in its own file, next to this one
+// (`<pack>_routes.rs` with `pub fn routes() -> Router<AppState>`), and adds ONE
+// `pub mod <pack>_routes;` line here and ONE `.merge(...)` line in create_routes().
+// mod.rs files are `merge=union` in .gitattributes, so packs adding lines never conflict.
+pub mod cache_routes;
+
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/ping", get(get_pong))
-        // Generic Redis CRUD demo: localhost/cache/some-key with a JSON body
-        // {"value": "..."} for create/update.
-        .route("/cache/{key}", get(get_cache_entry))
-        .route("/cache/{key}", post(create_cache_entry))
-        .route("/cache/{key}", put(update_cache_entry))
-        .route("/cache/{key}", delete(delete_cache_entry))
+        .merge(cache_routes::routes())
+        // One line per pack, e.g. `.merge(db_routes::routes())`
         .layer((
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
@@ -48,5 +46,3 @@ pub fn create_routes(state: AppState) -> Router {
         ))
         .with_state(state)
 }
-
-//more than 1 route file? search for "axum merge routes"

@@ -21,6 +21,15 @@ pub enum CachePool {
     Mock(MockCacheExecutor),
 }
 
+// For unit tests that build an AppState without Redis: `..Default::default()` in another
+// pack's test gets an empty mock here (it fails the test if it's ever called).
+#[cfg(test)]
+impl Default for CachePool {
+    fn default() -> Self {
+        CachePool::Mock(MockCacheExecutor::new())
+    }
+}
+
 #[cfg_attr(test, automock)]
 #[async_trait::async_trait]
 pub trait CacheExecutor: Send + Sync {

@@ -1,5 +1,13 @@
+use crate::engine::cache_engine::CachePool;
 use redis::aio::ConnectionManager;
 use redis::{ConnectionAddr, IntoConnectionInfo, RedisConnectionInfo};
+use std::sync::Arc;
+
+// Called from state.rs (build_app_state) at startup.
+pub async fn start() -> Arc<CachePool> {
+    let connection = init_cache().await.expect("Failed to connect to Redis");
+    Arc::new(CachePool::Real(connection))
+}
 
 // Built up via ConnectionAddr/RedisConnectionInfo rather than a "redis://:{password}@..."
 // URL string: the password isn't guaranteed to be URL-safe (e.g. a literal '#' truncates
