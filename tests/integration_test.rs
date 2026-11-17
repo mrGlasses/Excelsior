@@ -1,5 +1,5 @@
 use dotenv::dotenv;
-// Import the ms1 crate and its modules
+// Import the excelsior crate and its modules
 use excelsior::routes;
 use excelsior::state::build_app_state;
 use excelsior::utils::main_utils::service_starter;
