@@ -1,7 +1,5 @@
-use crate::handlers::db_handler::{create_user, create_user_pair, get_users};
 use crate::handlers::simple_handler::get_pong;
 use crate::state::AppState;
-use axum::routing::post;
 use axum::{Router, routing::get};
 use http::StatusCode;
 use std::time::Duration;
@@ -13,12 +11,17 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::Level;
 use tracing::Span;
 
+// The pack registry for routes. A pack puts its routes in its own file, next to this one
+// (`<pack>_routes.rs` with `pub fn routes() -> Router<AppState>`), and adds ONE
+// `pub mod <pack>_routes;` line here and ONE `.merge(...)` line in create_routes().
+// mod.rs files are `merge=union` in .gitattributes, so packs adding lines never conflict.
+pub mod db_routes;
+
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/ping", get(get_pong))
-        .route("/users", get(get_users))
-        .route("/users", post(create_user))
-        .route("/users/pair", post(create_user_pair))
+        .merge(db_routes::routes())
+        // One line per pack, e.g. `.merge(db_routes::routes())`
         .layer((
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
@@ -43,5 +46,3 @@ pub fn create_routes(state: AppState) -> Router {
         ))
         .with_state(state)
 }
-
-//more than 1 route file? search for "axum merge routes"

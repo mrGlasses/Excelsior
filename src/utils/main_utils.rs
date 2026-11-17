@@ -1,14 +1,12 @@
-use crate::database::connection::{init_db, run_migrations};
-use crate::engine::db_engine::DbPool;
 use crate::routes::create_routes;
-use crate::state;
+use crate::state::build_app_state;
+use crate::utils::pack_tracing::{pack_shutdown, pack_tracing_layers};
 use crate::utils::un_utils::start_message;
 use dotenv::dotenv;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
-use tracing::{error, warn};
+use tracing::warn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -16,18 +14,7 @@ pub async fn service_starter() {
     dotenv().ok();
     setup_tracing().await;
 
-    let db_pool = init_db().await.expect("Failed to connect to DB");
-    // Display ({}) rather than .expect(), whose Debug output would read
-    // "VersionMismatch(1)" instead of sqlx's readable message.
-    if let Err(err) = run_migrations(&db_pool).await {
-        error!("Failed to apply database migrations: {}", err);
-        panic!("Failed to apply database migrations: {}", err);
-    }
-    let app_state = state::AppState {
-        db_pool: Arc::new(DbPool::Real(db_pool)),
-    };
-
-    let app = create_routes(app_state);
+    let app = create_routes(build_app_state().await);
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
     let port = pre_port.parse().expect("MS_PORT must be a number.");
@@ -43,6 +30,8 @@ pub async fn service_starter() {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");
+
+    pack_shutdown();
 }
 pub async fn shutdown_signal() {
     let ctrl_c = async {
@@ -70,10 +59,14 @@ pub async fn shutdown_signal() {
 }
 
 pub async fn setup_tracing() {
-    tracing_subscriber::registry()
+    // try_init (not init) because in the test binary, several tests call this via
+    // service_starter(); a global subscriber can only be set once per process, and any
+    // call after the first is expected to no-op rather than panic.
+    let _ = tracing_subscriber::registry()
+        .with(pack_tracing_layers())
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 }

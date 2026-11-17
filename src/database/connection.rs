@@ -1,6 +1,22 @@
+use crate::engine::db_engine::DbPool;
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tracing::{error, info};
+
+// Called from state.rs (build_app_state) at startup: connects and applies the migrations.
+// Safe to run in parallel (tests build many apps): sqlx takes a Postgres advisory lock
+// while migrating.
+pub async fn start() -> Arc<DbPool> {
+    let pool = init_db().await.expect("Failed to connect to DB");
+    // Display ({}) rather than .expect(), whose Debug output would read
+    // "VersionMismatch(1)" instead of sqlx's readable message.
+    if let Err(err) = run_migrations(&pool).await {
+        error!("Failed to apply database migrations: {}", err);
+        panic!("Failed to apply database migrations: {}", err);
+    }
+    Arc::new(DbPool::Real(pool))
+}
 
 // Used when DATABASE_MAX_CONNECTIONS is not set.
 pub const DEFAULT_MAX_CONNECTIONS: u32 = 5;

@@ -19,6 +19,7 @@ async fn test_get_users_db_call() {
     // Create AppState with our mock wrapped in DbPool
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     // Test the actual function
@@ -44,6 +45,7 @@ async fn test_create_user_db_call() {
     // Create AppState with our mock wrapped in DbPool
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     // Test the actual function
@@ -70,6 +72,7 @@ async fn test_create_user_pair_db_call() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     let result = create_user_pair_db_call(State(state), "Ann".to_string(), "Bob".to_string())
@@ -94,6 +97,7 @@ async fn test_create_user_pair_db_call_propagates_error() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     let result = create_user_pair_db_call(
