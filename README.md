@@ -20,18 +20,27 @@ in the "exp-pack" folder is an extra feature/example to add to your project.
 
 Some IDEs allow you to use a repository as a base to avoid cloning, see with your IDE.
 
+Before merging packs, run this once in your clone. It lets git merge `Cargo.lock` by itself
+(see `.gitattributes`); without it, a `Cargo.lock` conflict is fixed by keeping either side
+and running `cargo build`:
+
+```
+git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
+```
+
+
 ## Versioning
 
 Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs never edit it:
 they get it when they're updated with `main` (`git merge main`), so every pack shows the version
 of the base it's built on.
 
-- **Major** (3.0.0): breaks the packs or projects built on Excelsior: the D.A.F.T. layout, where
+- **Major** (4.0.0): breaks the packs or projects built on Excelsior: the D.A.F.T. layout, where
   routes and workers are wired, the startup flow (`service_starter()`, `AppState`), a breaking
   Axum/Tokio/sqlx major upgrade, or a new Rust edition/minimum version. Every pack is updated and retested.
-- **Minor** (2.2.0): something new in the base that doesn't break existing code (a middleware,
+- **Minor** (3.1.0): something new in the base that doesn't break existing code (a middleware,
   a utility, an optional env var with a default).
-- **Patch** (2.1.2): fixes only: security/dependency bumps, bug and test fixes, docs.
+- **Patch** (3.0.1): fixes only: security/dependency bumps, bug and test fixes, docs.
 
 Adding or updating a pack does not change Excelsior's version. Each pack has its own file at the
 root of the repo, `pack-<name>.toml`, that only that pack edits (so merging packs never conflicts on it):
@@ -39,7 +48,7 @@ root of the repo, `pack-<name>.toml`, that only that pack edits (so merging pack
 ```toml
 name = "outbox-postgresql"
 version = "1.0.0"     # the pack's own version
-excelsior = "2.1"     # the Excelsior major.minor it was built and tested on
+excelsior = "3.0"     # the Excelsior major.minor it was built and tested on
 ticket = "EX0028"
 requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
 ```
@@ -47,6 +56,36 @@ requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
 `ls pack-*` lists the packs in a project. Every name in `requires` needs its own `pack-*.toml` too.
 After a minor or major Excelsior version, each pack is updated with `main`, retested, and its
 `excelsior` value changed.
+
+### Writing a pack
+
+Any set of packs must merge without conflicts. `.gitattributes` makes git keep both sides of
+the files packs add lines to (`.env`, `.env.test`, `README.md`, `Cargo.toml`, `mod.rs` files and
+the registries below). For that to work:
+
+- Only **add** lines to shared files; never change, reorder or delete an existing line.
+- `mod` lines go right **above the marker comment** in each `mod.rs`, `lib.rs` and `main.rs`
+  ("Packs add their `mod` lines above this one"), never in alphabetical order: lines added
+  around the same existing line by three packs get duplicated by git. `rustfmt.toml` keeps
+  `cargo fmt` from sorting them. The `engine/`, `database/` and `domain/tests/` modules
+  already exist, so a pack never creates its own `mod.rs`.
+- A dependency used by two packs goes in the code they both build on, never in both. The
+  common ones (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) are
+  already in `main`.
+- Never edit `main_utils.rs`, `simple_handler.rs` or the existing tests. A pack's code and
+  tests go in its own files, and it plugs in through the registries, one line each:
+
+| A pack that needs...            | adds one line to                                                    |
+|---------------------------------|---------------------------------------------------------------------|
+| shared state (a pool, a client) | `src/state.rs`: a field in `AppState` and its line in `build_app_state()` |
+| routes                          | `src/routes/mod.rs`: `pub mod <pack>_routes;` and `.merge(<pack>_routes::routes())` |
+| a tracing layer / a final flush | `src/utils/pack_tracing.rs`: `pack_tracing_layers()` / `pack_shutdown()` |
+| a background worker             | `src/utils/pack_workers.rs` (from `background-tasks`)                |
+| a fake service in tests         | `tests/pack_fakes/mod.rs` (from `background-tasks`)                  |
+
+Write full paths in those lines (`crate::engine::db_engine::DbPool`), not `use` lines. In unit
+tests, build the state with only your field: `AppState { db_pool: ..., ..Default::default() }`.
+For that, your field's type needs a `#[cfg(test)] impl Default` (an empty mock is enough).
 
 ## Contributing
 
@@ -84,6 +123,12 @@ several other libraries, including:
 - 1.0.0: Initial release.
 - 2.0.0: Improving the code coverage and upgrading the dependencies.
 - 2.1.2: Security fixes (RUSTSEC-2026-0007, -0258, -0477, -0285, -0382, -0391, RUSTSEC-2025-0055), versioning rules and `pack-<name>.toml` files.
+- 2.1.3: Packs merge together without conflicts (`.gitattributes`, `Cargo.lock` merge driver), tracing set up once in tests.
+- 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
+- 3.0.1: The dependencies many packs share (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) live in `main`; README notes on merging packs.
+- 3.1.0: Marker comments for `mod` lines and `rustfmt.toml` (`reorder_modules = false`), empty `engine/`, `database/` and `domain/tests/` modules, `lib.rs`/`main.rs` merged as union, `.env` files end with a newline.
+- 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
+- 3.1.2: Fix: the app's own logs were switched off when no pack adds a tracing layer (since 3.0.0).
 
 ## License
 

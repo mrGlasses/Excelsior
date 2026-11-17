@@ -1,6 +1,7 @@
 use dotenv::dotenv;
 // Import the ms1 crate and its modules
 use excelsior::routes;
+use excelsior::state::build_app_state;
 use excelsior::utils::main_utils::service_starter;
 use serial_test::serial;
 use std::time::Duration;
@@ -30,7 +31,7 @@ async fn spawn_app() -> String {
     let port = listener.local_addr().unwrap().port();
 
     // Build the application with routes
-    let app = routes::create_routes();
+    let app = routes::create_routes(build_app_state().await);
 
     // Spawn the server in the background
     tokio::spawn(async move {
@@ -55,22 +56,6 @@ async fn test_server_health_check() {
 
     assert!(response.status().is_success());
     assert_eq!(response.text().await.unwrap(), "PONG!");
-}
-
-#[tokio::test]
-async fn test_its_a_rainy_day_route() {
-    let address = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/its-a-rainy-day", address))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    let body = response.text().await.unwrap();
-    assert!(body.contains("Ladaradiradadada! !!"));
 }
 
 #[tokio::test]

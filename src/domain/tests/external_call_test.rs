@@ -1,4 +1,4 @@
-use crate::domain::general::Message;
+use crate::domain::external_call::Message;
 use serde_json::from_str;
 
 #[test]
