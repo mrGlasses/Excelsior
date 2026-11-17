@@ -1,0 +1,3 @@
+# Keep `mod` lines where they are written: packs add theirs above a marker comment (see
+# "Writing a pack" in the README). Sorting them would move lines and break the merges.
+reorder_modules = false

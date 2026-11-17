@@ -2,9 +2,10 @@
 // To use it for real, replace `handle_outbox_event` and write events with
 // `insert_outbox_event(&mut tx, ...)` inside your own transactions.
 use crate::domain::outbox::{DemoEventRequest, OutboxEvent};
-use crate::engine::db_engine::create_demo_event_db_call;
+use crate::engine::db_engine::{DbPool, create_demo_event_db_call};
 use crate::engine::outbox_engine::{claim_next_event, mark_failed, mark_published};
 use crate::state::AppState;
+use crate::utils::workers::Workers;
 use anyhow::{Result, anyhow};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, extract::State, http::StatusCode};
@@ -16,6 +17,22 @@ use tracing::{error, info, warn};
 
 // The channel the outbox trigger notifies (see migration 0004_outbox.sql).
 const OUTBOX_CHANNEL: &str = "outbox";
+// Called from utils/pack_workers.rs: starts the outbox worker on the app's database pool.
+pub fn start(workers: &mut Workers, state: &AppState) -> bool {
+    // The worker gets its own handle to the pool (a Pool is a cheap, shared handle).
+    let pool = match state.db_pool.as_ref() {
+        DbPool::Real(pool) => pool.clone(),
+        // Unit tests have no database, so there's nothing for the worker to read.
+        #[cfg(test)]
+        DbPool::Mock(_) => return true,
+    };
+    let settings = outbox_settings_from(std::env::var("OUTBOX_MAX_ATTEMPTS").ok());
+    workers.spawn("outbox", move |shutdown| {
+        run_outbox_worker(pool, settings, shutdown)
+    });
+    true
+}
+
 // Used when OUTBOX_MAX_ATTEMPTS is not set.
 pub const DEFAULT_MAX_ATTEMPTS: i32 = 10;
 // Even with no notification, look at the table this often (catches anything missed

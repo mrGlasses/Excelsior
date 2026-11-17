@@ -29,6 +29,7 @@ async fn test_get_users_success() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = get_users(State(state)).await;
@@ -46,6 +47,7 @@ async fn test_get_users_error() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = get_users(State(state)).await;
@@ -67,6 +69,7 @@ async fn test_create_user_success() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = create_user(State(state), Json(new_user)).await;
@@ -87,6 +90,7 @@ async fn test_create_user_error() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = create_user(State(state), Json(new_user)).await;
@@ -109,6 +113,7 @@ async fn test_create_user_pair_success() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = create_user_pair(State(state), Json(pair)).await;
@@ -130,6 +135,7 @@ async fn test_create_user_pair_error() {
 
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_executor)),
+        ..Default::default()
     };
 
     let response = create_user_pair(State(state), Json(pair)).await;

@@ -1,18 +1,15 @@
-use crate::database::connection::{init_db, run_migrations};
-use crate::engine::db_engine::DbPool;
-use crate::handlers::outbox_handler::{outbox_settings_from, run_outbox_worker};
-use crate::handlers::worker_handler::{heartbeat_loop, stuck_loop};
 use crate::routes::create_routes;
-use crate::state;
+use crate::state::build_app_state;
+use crate::utils::pack_tracing::{pack_shutdown, pack_tracing_layers};
+use crate::utils::pack_workers::start_pack_workers;
 use crate::utils::un_utils::start_message;
 use crate::utils::workers::{Workers, shutdown_timeout_from};
 use dotenv::dotenv;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -21,28 +18,8 @@ pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
-    let db_pool = init_db().await.expect("Failed to connect to DB");
-    // Display ({}) rather than .expect(), whose Debug output would read
-    // "VersionMismatch(1)" instead of sqlx's readable message.
-    if let Err(err) = run_migrations(&db_pool).await {
-        error!("Failed to apply database migrations: {}", err);
-        panic!("Failed to apply database migrations: {}", err);
-    }
-    // The outbox worker gets its own handle to the pool (a Pool is a cheap, shared handle).
-    let outbox_pool = db_pool.clone();
-    let outbox_settings = outbox_settings_from(std::env::var("OUTBOX_MAX_ATTEMPTS").ok());
-    let app_state = state::AppState {
-        db_pool: Arc::new(DbPool::Real(db_pool)),
-    };
-
-    let app = create_routes(app_state);
-
-    let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
-    let port = pre_port.parse().expect("MS_PORT must be a number.");
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-
-    let server = TcpListener::bind(&addr).await.unwrap();
+    // Each pack connects to its service here (see state.rs).
+    let state = build_app_state().await;
 
     // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
     let shutdown = CancellationToken::new();
@@ -50,13 +27,20 @@ pub async fn service_starter() -> bool {
     let shutdown_timeout =
         shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
     let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
-    workers.spawn("heartbeat", heartbeat_loop);
-    workers.spawn("outbox", move |shutdown| {
-        run_outbox_worker(outbox_pool, outbox_settings, shutdown)
-    });
-    if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
-        workers.spawn("stuck", stuck_loop);
+    // Before the server starts, so a pack with a missing setting stops the app right away
+    // (the workers already spawned are stopped when `workers` is dropped).
+    if !start_pack_workers(&mut workers, &state) {
+        return false;
     }
+
+    let app = create_routes(state);
+
+    let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
+    let port = pre_port.parse().expect("MS_PORT must be a number.");
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+
+    let server = TcpListener::bind(&addr).await.unwrap();
 
     //info!("Excelsior listening on {}", addr); //tracing mode startup
     start_message(addr.to_string()).await; //default mode startup
@@ -80,6 +64,7 @@ pub async fn service_starter() -> bool {
     let (_, _, any_worker_failed) =
         tokio::join!(wait_for_signal, http_server, workers.run_until_shutdown());
     info!("server stopped");
+    pack_shutdown();
 
     !any_worker_failed
 }
@@ -109,10 +94,16 @@ pub async fn shutdown_signal() {
 }
 
 pub async fn setup_tracing() {
-    tracing_subscriber::registry()
+    // try_init (not init) because in the test binary, several tests call this via
+    // service_starter(); a global subscriber can only be set once per process, and any
+    // call after the first is expected to no-op rather than panic.
+    let _ = tracing_subscriber::registry()
+        // Only when a pack gives layers: an empty list answers "not interested" to every
+        // log call, which would switch off all of the app's own logs.
+        .with(Some(pack_tracing_layers()).filter(|layers| !layers.is_empty()))
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 }

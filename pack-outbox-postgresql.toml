@@ -1,6 +1,6 @@
 name = "outbox-postgresql"
-version = "1.0.0"
-excelsior = "2.1"
+version = "2.0.0"
+excelsior = "3.1"
 ticket = "EX0028"
 requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
 description = "Outbox table, LISTEN/NOTIFY worker, retries, FOR UPDATE SKIP LOCKED"

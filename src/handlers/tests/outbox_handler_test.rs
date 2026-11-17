@@ -12,6 +12,7 @@ use std::time::Duration;
 fn state_with(mock_db: MockDatabaseExecutor) -> AppState {
     AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     }
 }
 
