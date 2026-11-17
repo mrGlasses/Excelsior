@@ -28,6 +28,9 @@ and running `cargo build`:
 git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 ```
 
+After merging packs, run `cargo fmt` once: git keeps every pack's `mod` line, but not in the
+alphabetical order rustfmt wants.
+
 ## Versioning
 
 Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs never edit it:
@@ -63,8 +66,9 @@ the files packs add lines to (`.env`, `.env.test`, `README.md`, `Cargo.toml`, `m
 the registries below). For that to work:
 
 - Only **add** lines to shared files; never change or reorder an existing line.
-- A dependency used by two packs goes in the pack they both build on (for example
-  `async-trait` and `mockall` live in `background-tasks`), never in both.
+- A dependency used by two packs goes in the code they both build on, never in both. The
+  common ones (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) are
+  already in `main`.
 - Never edit `main_utils.rs`, `simple_handler.rs` or the existing tests. A pack's code and
   tests go in its own files, and it plugs in through the registries, one line each:
 
@@ -118,6 +122,7 @@ several other libraries, including:
 - 2.1.2: Security fixes (RUSTSEC-2026-0007, -0258, -0477, -0285, -0382, -0391, RUSTSEC-2025-0055), versioning rules and `pack-<name>.toml` files.
 - 2.1.3: Packs merge together without conflicts (`.gitattributes`, `Cargo.lock` merge driver), tracing set up once in tests.
 - 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
+- 3.0.1: The dependencies many packs share (`anyhow`, `async-trait`, `serde`, `serde_json`, `mockall`, `httpmock`) live in `main`; README notes on merging packs.
 
 ## License
 
