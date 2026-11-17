@@ -7,7 +7,9 @@
 README.md merge=union
 Cargo.toml merge=union
 **/mod.rs merge=union
-# The pack registries: one line per pack (they live in exp-pack/background-tasks).
+# The pack registries: one line per pack (pack_workers.rs lives in exp-pack/background-tasks).
+src/state.rs merge=union
+src/utils/pack_tracing.rs merge=union
 src/utils/pack_workers.rs merge=union
 
 # Cargo.lock: merge normally, and where both sides changed the same lines keep ours;
