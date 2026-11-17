@@ -1,11 +1,23 @@
 // Demo workers for utils::workers. Handlers handle routes; these handle ticks.
-// Delete this file (and its lines in service_starter) when your app has real workers.
+// Delete this file (and its line in utils/pack_workers.rs) when your app has real workers.
+use crate::state::AppState;
+use crate::utils::workers::Workers;
 use anyhow::anyhow;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
+// Called from utils/pack_workers.rs, like every pack's worker. The demos need no settings,
+// so they always start.
+pub fn start(workers: &mut Workers, _state: &AppState) -> bool {
+    workers.spawn("heartbeat", heartbeat_loop);
+    if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
+        workers.spawn("stuck", stuck_loop);
+    }
+    true
+}
 
 // Logs "heartbeat" every 10 seconds until told to stop.
 // DEMO_HEARTBEAT_FAIL_AFTER=3 makes it fail after the 3rd beat (to see the app exit with code 1).

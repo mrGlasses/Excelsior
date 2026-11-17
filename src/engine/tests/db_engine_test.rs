@@ -19,6 +19,7 @@ async fn test_get_users_db_call() {
     // Create AppState with our mock wrapped in DbPool
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     // Test the actual function
@@ -44,6 +45,7 @@ async fn test_create_user_db_call() {
     // Create AppState with our mock wrapped in DbPool
     let state = AppState {
         db_pool: Arc::new(DbPool::Mock(mock_db)),
+        ..Default::default()
     };
 
     // Test the actual function

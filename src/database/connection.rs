@@ -1,6 +1,30 @@
+use crate::engine::db_engine::DbPool;
 use sqlx::{MySql, Pool, mysql::MySqlPoolOptions};
+use std::sync::Arc;
 use std::time::Duration;
-use tracing::info;
+use tokio::sync::OnceCell;
+use tracing::{error, info};
+
+// Set once the migrations have run in this process.
+static MIGRATED: OnceCell<()> = OnceCell::const_new();
+
+// Called from state.rs (build_app_state) at startup: connects and applies the migrations.
+pub async fn start() -> Arc<DbPool> {
+    let pool = init_db().await.expect("Failed to connect to DB");
+    // Only once per process: the app calls this once anyway, but in the tests every test
+    // builds an app, and parallel migrations of a fresh MariaDB database collide
+    // ("Duplicate entry '1'", then a "dirty" migration).
+    let migrated = MIGRATED
+        .get_or_try_init(|| async { run_migrations(&pool).await })
+        .await;
+    // Display ({}) rather than .expect(), whose Debug output would read
+    // "VersionMismatch(1)" instead of sqlx's readable message.
+    if let Err(err) = migrated {
+        error!("Failed to apply database migrations: {}", err);
+        panic!("Failed to apply database migrations: {}", err);
+    }
+    Arc::new(DbPool::Real(pool))
+}
 
 pub async fn init_db() -> Result<Pool<MySql>, sqlx::Error> {
     let database_builder = &format!(

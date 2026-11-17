@@ -2,7 +2,7 @@ use crate::domain::database::NewUser;
 use crate::engine::db_engine::{create_user_db_call, get_users_db_call};
 use crate::state::AppState;
 use axum::response::{IntoResponse, Response};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use tracing::{error, info, warn};
 
 pub async fn get_users(State(state): State<AppState>) -> Response {

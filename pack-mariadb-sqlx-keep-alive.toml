@@ -1,6 +1,6 @@
 name = "mariadb-sqlx-keep-alive"
-version = "1.1.0"
-excelsior = "2.1"
+version = "2.0.1"
+excelsior = "3.1"
 ticket = ""
 requires = []
 description = "MariaDB with sqlx, keep-alive connection pool, migrations on startup"
