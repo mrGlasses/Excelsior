@@ -40,12 +40,12 @@ Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs
 they get it when they're updated with `main` (`git merge main`), so every pack shows the version
 of the base it's built on.
 
-- **Major** (3.0.0): breaks the packs or projects built on Excelsior: the D.A.F.T. layout, where
+- **Major** (4.0.0): breaks the packs or projects built on Excelsior: the D.A.F.T. layout, where
   routes and workers are wired, the startup flow (`service_starter()`, `AppState`), a breaking
   Axum/Tokio/sqlx major upgrade, or a new Rust edition/minimum version. Every pack is updated and retested.
-- **Minor** (2.2.0): something new in the base that doesn't break existing code (a middleware,
+- **Minor** (3.1.0): something new in the base that doesn't break existing code (a middleware,
   a utility, an optional env var with a default).
-- **Patch** (2.1.2): fixes only: security/dependency bumps, bug and test fixes, docs.
+- **Patch** (3.0.1): fixes only: security/dependency bumps, bug and test fixes, docs.
 
 Adding or updating a pack does not change Excelsior's version. Each pack has its own file at the
 root of the repo, `pack-<name>.toml`, that only that pack edits (so merging packs never conflicts on it):
@@ -53,7 +53,7 @@ root of the repo, `pack-<name>.toml`, that only that pack edits (so merging pack
 ```toml
 name = "outbox-postgresql"
 version = "1.0.0"     # the pack's own version
-excelsior = "2.1"     # the Excelsior major.minor it was built and tested on
+excelsior = "3.0"     # the Excelsior major.minor it was built and tested on
 ticket = "EX0028"
 requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
 ```
@@ -71,9 +71,20 @@ the registries below). For that to work:
 - Only **add** lines to shared files; never change or reorder an existing line.
 - A dependency used by two packs goes in the pack they both build on (for example
   `async-trait` and `mockall` live in `background-tasks`), never in both.
-- Don't edit `main_utils.rs` or the existing tests. A pack with a background worker adds one
-  line to `src/utils/pack_workers.rs`, and a fake for its tests to `tests/pack_fakes/mod.rs`.
-  Its own tests go in its own files.
+- Never edit `main_utils.rs`, `simple_handler.rs` or the existing tests. A pack's code and
+  tests go in its own files, and it plugs in through the registries, one line each:
+
+| A pack that needs...            | adds one line to                                                    |
+|---------------------------------|---------------------------------------------------------------------|
+| shared state (a pool, a client) | `src/state.rs`: a field in `AppState` and its line in `build_app_state()` |
+| routes                          | `src/routes/mod.rs`: `pub mod <pack>_routes;` and `.merge(<pack>_routes::routes())` |
+| a tracing layer / a final flush | `src/utils/pack_tracing.rs`: `pack_tracing_layers()` / `pack_shutdown()` |
+| a background worker             | `src/utils/pack_workers.rs` (from `background-tasks`)                |
+| a fake service in tests         | `tests/pack_fakes/mod.rs` (from `background-tasks`)                  |
+
+Write full paths in those lines (`crate::engine::db_engine::DbPool`), not `use` lines. In unit
+tests, build the state with only your field: `AppState { db_pool: ..., ..Default::default() }`.
+For that, your field's type needs a `#[cfg(test)] impl Default` (an empty mock is enough).
 
 ## Contributing
 
@@ -112,6 +123,7 @@ several other libraries, including:
 - 2.0.0: Improving the code coverage and upgrading the dependencies.
 - 2.1.2: Security fixes (RUSTSEC-2026-0007, -0258, -0477, -0285, -0382, -0391, RUSTSEC-2025-0055), versioning rules and `pack-<name>.toml` files.
 - 2.1.3: Packs merge together without conflicts (`.gitattributes`, `Cargo.lock` merge driver), tracing set up once in tests.
+- 3.0.0: Pack registries for shared state (`AppState`), routes and tracing; `create_routes()` takes the state. Packs plug in with one line each.
 
 ## License
 
