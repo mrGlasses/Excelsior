@@ -13,6 +13,15 @@ pub enum DbPool {
     Mock(MockDatabaseExecutor),
 }
 
+// For unit tests that build an AppState without a database: `..Default::default()` in
+// another pack's test gets an empty mock here (it fails the test if it's ever called).
+#[cfg(test)]
+impl Default for DbPool {
+    fn default() -> Self {
+        DbPool::Mock(MockDatabaseExecutor::new())
+    }
+}
+
 #[cfg_attr(test, automock)]
 #[async_trait::async_trait]
 pub trait DatabaseExecutor: Send + Sync {
