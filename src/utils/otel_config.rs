@@ -7,10 +7,9 @@ use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, SdkTracerProvider};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{Layer, Registry};
 
+// Set by layer(), so shutdown_telemetry() can flush the spans still buffered at shutdown.
 static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
 
 pub fn init_telemetry() -> Result<SdkTracerProvider> {
@@ -50,26 +49,17 @@ pub fn init_telemetry() -> Result<SdkTracerProvider> {
     Ok(tracer_provider)
 }
 
-pub fn setup_tracing_with_otel() {
-    let tracer_provider = init_telemetry()
-        .expect("Failed to initialize OpenTelemetry - cannot proceed without telemetry");
-
-    let tracer = tracer_provider.tracer("excelsior");
-
-    let otel_layer = OpenTelemetryLayer::new(tracer);
-
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_target(true)
-        .with_thread_ids(false)
-        .with_line_number(true);
-
-    tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(fmt_layer)
-        .with(otel_layer)
-        .init();
+// Called from utils/pack_tracing.rs: the layer that sends every span to the OTLP collector.
+// Built once per process (the tests start the app several times).
+pub fn layer() -> Box<dyn Layer<Registry> + Send + Sync> {
+    let tracer_provider = TRACER_PROVIDER.get_or_init(|| {
+        init_telemetry()
+            .expect("Failed to initialize OpenTelemetry - cannot proceed without telemetry")
+    });
+    OpenTelemetryLayer::new(tracer_provider.tracer("excelsior")).boxed()
 }
 
+// Called from utils/pack_tracing.rs (pack_shutdown) once the app has stopped.
 pub fn shutdown_telemetry() {
     if let Some(provider) = TRACER_PROVIDER.get()
         && let Err(e) = provider.shutdown()

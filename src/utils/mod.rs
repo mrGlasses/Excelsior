@@ -1,8 +1,9 @@
 pub mod main_utils;
+pub mod pack_tracing;
 pub mod un_utils;
 
-pub mod otel_config;
 mod constants;
+pub mod otel_config;
 
 #[cfg(test)]
 mod tests;
