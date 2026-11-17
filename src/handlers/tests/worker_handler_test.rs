@@ -39,3 +39,18 @@ async fn test_heartbeat_keeps_running_without_fail_setting() {
         "heartbeat should never end by itself"
     );
 }
+
+#[tokio::test]
+async fn test_start_spawns_the_demo_workers() {
+    use crate::handlers::worker_handler::start;
+    use crate::utils::workers::Workers;
+
+    let shutdown = CancellationToken::new();
+    let mut workers = Workers::new(shutdown.clone(), Duration::from_secs(1));
+
+    assert!(start(&mut workers));
+
+    // The heartbeat is running: stopping the app now is a clean shutdown.
+    shutdown.cancel();
+    assert!(!workers.run_until_shutdown().await);
+}

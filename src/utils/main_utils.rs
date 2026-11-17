@@ -1,5 +1,5 @@
-use crate::handlers::worker_handler::{heartbeat_loop, stuck_loop};
 use crate::routes::create_routes;
+use crate::utils::pack_workers::start_pack_workers;
 use crate::utils::un_utils::start_message;
 use crate::utils::workers::{Workers, shutdown_timeout_from};
 use dotenv::dotenv;
@@ -16,6 +16,18 @@ pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
+    // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
+    let shutdown = CancellationToken::new();
+
+    let shutdown_timeout =
+        shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
+    let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
+    // Before the server starts, so a pack with a missing setting stops the app right away
+    // (the workers already spawned are stopped when `workers` is dropped).
+    if !start_pack_workers(&mut workers) {
+        return false;
+    }
+
     let app = create_routes();
 
     let pre_port = std::env::var("MS_PORT").expect("MS_PORT must be set.");
@@ -24,17 +36,6 @@ pub async fn service_starter() -> bool {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let server = TcpListener::bind(&addr).await.unwrap();
-
-    // One token tells everyone to stop: cancelled by Ctrl+C/SIGTERM, or by a failing worker.
-    let shutdown = CancellationToken::new();
-
-    let shutdown_timeout =
-        shutdown_timeout_from(std::env::var("WORKER_SHUTDOWN_TIMEOUT_SECS").ok());
-    let mut workers = Workers::new(shutdown.clone(), shutdown_timeout);
-    workers.spawn("heartbeat", heartbeat_loop);
-    if std::env::var("DEMO_STUCK_WORKER").is_ok_and(|value| value == "true") {
-        workers.spawn("stuck", stuck_loop);
-    }
 
     //info!("Excelsior listening on {}", addr); //tracing mode startup
     start_message(addr.to_string()).await; //default mode startup

@@ -6,6 +6,8 @@ use serial_test::serial;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
+mod pack_fakes;
+
 fn setup_test_env() {
     // Skip dotenv loading if running in CI
     if std::env::var("CI").is_ok() {
@@ -67,6 +69,7 @@ async fn test_service_starter_initialization() {
     unsafe {
         std::env::set_var("MS_PORT", "3000");
     }
+    let _fakes = pack_fakes::start_pack_fakes().await;
 
     println!("Testing service starter initialization...");
     // Spawn service_starter in a background task
@@ -111,6 +114,7 @@ async fn test_service_starter_graceful_shutdown() {
     unsafe {
         std::env::set_var("MS_PORT", "9998");
     }
+    let _fakes = pack_fakes::start_pack_fakes().await;
 
     // Spawn service_starter in a background task
     let server_handle = tokio::spawn(async move {
