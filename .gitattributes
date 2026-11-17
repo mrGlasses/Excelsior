@@ -1,0 +1,20 @@
+# Merging packs (exp-pack/*) together without conflicts. See "Writing a pack" in the README.
+
+# Packs only ADD lines to these files. "union" keeps the lines from both sides when two
+# packs add at the same spot. It can't fix two packs CHANGING the same line: don't do that.
+.env merge=union
+.env.test merge=union
+README.md merge=union
+Cargo.toml merge=union
+**/mod.rs merge=union
+# The pack registries: one line per pack (they live in exp-pack/background-tasks).
+src/utils/pack_workers.rs merge=union
+
+# Cargo.lock: merge normally, and where both sides changed the same lines keep ours;
+# the next `cargo build` adds whatever the other side needs. Git only runs this after
+# a one-time setup in each clone (see the README); without it you get a normal conflict.
+Cargo.lock merge=cargo-lock
+
+# sqlx checksums migration files byte by byte: CRLF (Windows checkout) and LF (Linux/CI)
+# would look like a "modified" migration and the app would refuse to start.
+*.sql text eol=lf
