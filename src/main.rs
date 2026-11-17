@@ -4,11 +4,14 @@
 
 use crate::utils::main_utils::service_starter;
 
+mod database;
 mod domain;
+mod engine;
 mod handlers;
 mod routes;
 mod state;
 mod utils;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 #[tokio::main]
 async fn main() {
