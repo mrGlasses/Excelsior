@@ -16,6 +16,7 @@ use tracing::Span;
 // `pub mod <pack>_routes;` line here and ONE `.merge(...)` line in create_routes().
 // mod.rs files are `merge=union` in .gitattributes, so packs adding lines never conflict.
 pub mod db_routes;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 pub fn create_routes(state: AppState) -> Router {
     Router::new()

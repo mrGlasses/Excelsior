@@ -1,5 +1,6 @@
-pub mod database;
 pub mod general;
+pub mod database;
+// Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 #[cfg(test)]
 mod tests;
