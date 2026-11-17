@@ -20,6 +20,14 @@ in the "exp-pack" folder is an extra feature/example to add to your project.
 
 Some IDEs allow you to use a repository as a base to avoid cloning, see with your IDE.
 
+Before merging packs, run this once in your clone. It lets git merge `Cargo.lock` by itself
+(see `.gitattributes`); without it, a `Cargo.lock` conflict is fixed by keeping either side
+and running `cargo build`:
+
+```
+git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
+```
+
 ### Environment variables
 
 - `WORKER_SHUTDOWN_TIMEOUT_SECS` — optional, seconds each background worker gets to stop on shutdown before it's abandoned (default `8`, under Docker's 10-second grace period).
@@ -53,6 +61,19 @@ requires = ["postgresql-sqlx-keep-alive", "background-tasks"]
 `ls pack-*` lists the packs in a project. Every name in `requires` needs its own `pack-*.toml` too.
 After a minor or major Excelsior version, each pack is updated with `main`, retested, and its
 `excelsior` value changed.
+
+### Writing a pack
+
+Any set of packs must merge without conflicts. `.gitattributes` makes git keep both sides of
+the files packs add lines to (`.env`, `.env.test`, `README.md`, `Cargo.toml`, `mod.rs` files and
+the registries below). For that to work:
+
+- Only **add** lines to shared files; never change or reorder an existing line.
+- A dependency used by two packs goes in the pack they both build on (for example
+  `async-trait` and `mockall` live in `background-tasks`), never in both.
+- Don't edit `main_utils.rs` or the existing tests. A pack with a background worker adds one
+  line to `src/utils/pack_workers.rs`, and a fake for its tests to `tests/pack_fakes/mod.rs`.
+  Its own tests go in its own files.
 
 ## Contributing
 
@@ -90,6 +111,7 @@ several other libraries, including:
 - 1.0.0: Initial release.
 - 2.0.0: Improving the code coverage and upgrading the dependencies.
 - 2.1.2: Security fixes (RUSTSEC-2026-0007, -0258, -0477, -0285, -0382, -0391, RUSTSEC-2025-0055), versioning rules and `pack-<name>.toml` files.
+- 2.1.3: Packs merge together without conflicts (`.gitattributes`, `Cargo.lock` merge driver), tracing set up once in tests.
 
 ## License
 

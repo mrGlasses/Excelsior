@@ -87,10 +87,13 @@ pub async fn shutdown_signal() {
 }
 
 pub async fn setup_tracing() {
-    tracing_subscriber::registry()
+    // try_init (not init) because in the test binary, several tests call this via
+    // service_starter(); a global subscriber can only be set once per process, and any
+    // call after the first is expected to no-op rather than panic.
+    let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
-        .init();
+        .try_init();
 }
