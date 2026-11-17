@@ -21,8 +21,16 @@ tokio-util = "0.7"
 # Shared by the packs built on background-tasks (telegram, discord): mockable traits.
 # Kept here so those packs never add the same line (see "Writing a pack" in the README).
 async-trait = "0.1"
+# Discord: gateway = the live WebSocket, http = REST calls, model = the data types
+twilight-gateway = "0.18"
+twilight-http = "0.18"
+twilight-model = "0.18"
+twilight-util = { version = "0.18", features = ["builder"] }
+# Twilight connects over TLS (rustls) but leaves the choice of crypto backend to the app.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 axum = { version = "0.8.8" }
 tokio = { version = "1.0", features = ["full", "test-util"] }
 mockall = "0.14"
+serde_json = "1"

@@ -11,6 +11,7 @@ pub fn start_pack_workers(workers: &mut Workers) -> bool {
     let started: Vec<bool> = vec![
         // One line per pack, ending with a comma.
         crate::handlers::worker_handler::start(workers),
+        crate::handlers::discord_handler::start(workers),
     ];
     started.into_iter().all(|ok| ok)
 }

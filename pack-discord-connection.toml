@@ -1,0 +1,6 @@
+name = "discord-connection"
+version = "1.0.0"
+excelsior = "2.1"
+ticket = "EX0024"
+requires = ["background-tasks"]
+description = "Discord bot (gateway worker, slash commands, buttons) running as a background worker"

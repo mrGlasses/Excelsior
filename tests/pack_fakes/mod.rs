@@ -5,11 +5,13 @@
 use std::any::Any;
 
 // One file per pack, next to this one.
+pub mod discord;
 
 // Starts every pack's fake and sets the env vars that point the app at it.
 // Keep the returned value until the test ends: dropping it stops the fakes.
 pub async fn start_pack_fakes() -> Vec<Box<dyn Any>> {
     vec![
         // One line per pack, ending with a comma.
+        Box::new(discord::start_fake_discord_gateway().await),
     ]
 }

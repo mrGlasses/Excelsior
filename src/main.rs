@@ -1,6 +1,7 @@
 use crate::utils::main_utils::service_starter;
 
 mod domain;
+mod engine;
 mod handlers;
 mod routes;
 mod utils;

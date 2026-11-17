@@ -1,3 +1,4 @@
+pub mod discord_handler;
 pub mod simple_handler;
 pub mod worker_handler;
 
