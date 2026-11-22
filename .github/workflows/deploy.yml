@@ -51,16 +51,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Architecture Output
         id: set-arch
+        env:
+          INPUT_BUILD_ARCH: ${{ github.event.inputs.build_architecture || 'arm64-only' }}
         run: |
           # Use input if manual, otherwise default to arm64-only
-          ARCH="${{ github.event.inputs.build_architecture || 'arm64-only' }}"
+          ARCH="$INPUT_BUILD_ARCH"
           echo "arch=$ARCH" >> $GITHUB_OUTPUT
 
       - name: Repository to lowercase
@@ -86,17 +88,22 @@ jobs:
 
       - name: Determine version type from PR
         id: determine-version
+        # The PR title/body are passed as environment variables, never pasted into the
+        # script with ${{ }}. Pasted, a backtick or $( ) in a PR description becomes a
+        # command that runs here. As variables, bash only ever reads them as text.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION_TYPE: ${{ github.event.inputs.version_type }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             # Manual dispatch - use the input
-            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+            VERSION_TYPE="$INPUT_VERSION_TYPE"
           else
             # PR merge - extract from PR title or body
-            PR_TITLE="${{ github.event.pull_request.title }}"
-            PR_BODY="${{ github.event.pull_request.body }}"
-
             # Combine title and body for searching (case-insensitive)
-            COMBINED=$(echo "$PR_TITLE $PR_BODY" | tr '[:upper:]' '[:lower:]')
+            COMBINED=$(printf '%s %s' "$PR_TITLE" "$PR_BODY" | tr '[:upper:]' '[:lower:]')
 
             if [[ "$COMBINED" == *"[major]"* ]]; then
               VERSION_TYPE="major"
@@ -206,7 +213,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: deploy
 
@@ -271,15 +278,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: deploy
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -287,7 +294,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -295,7 +302,7 @@ jobs:
             type=raw,value=latest-amd64
 
       - name: Build and push AMD64 image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dockerfile
@@ -331,15 +338,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: deploy
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -347,7 +354,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -355,7 +362,7 @@ jobs:
             type=raw,value=latest-arm64
 
       - name: Build and push ARM64 image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./dockerfile
@@ -391,7 +398,7 @@ jobs:
 
     steps:
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -443,7 +450,7 @@ jobs:
 
     steps:
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -499,7 +506,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: deploy
 
