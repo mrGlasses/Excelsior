@@ -271,3 +271,68 @@ async fn test_outbox_two_workers_never_share_an_event() {
     assert_eq!(remaining, 0, "all 100 events should be handled");
     assert_eq!(handled_twice, 0, "no event may be handled twice");
 }
+
+#[tokio::test]
+#[serial]
+async fn test_outbox_worker_survives_dropped_database_connections() {
+    // EX0031: kill the worker's database connections from the server side. The worker
+    // must keep running, its LISTEN connection must come back, and new events must
+    // still be handled. (sqlx notices killed connections and replaces them, so this
+    // passes even without the EX0031 fix; the fix matters when the database is
+    // unreachable for a while, which a test can't do without stopping the container.)
+    setup_test_env();
+    let pool = create_test_db_pool().await;
+
+    // The worker gets its own pool with a label, so we kill only its connections.
+    let options = sqlx::postgres::PgConnectOptions::new()
+        .host(&std::env::var("DATABASE_HOST").unwrap())
+        .port(std::env::var("DATABASE_PORT").unwrap().parse().unwrap())
+        .username(&std::env::var("DATABASE_USER").unwrap())
+        .password(&std::env::var("DATABASE_PSWD").unwrap())
+        .database(&std::env::var("DATABASE_NAME").unwrap())
+        .application_name("outbox-db-error-test");
+    let worker_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(3)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let settings = OutboxSettings {
+        max_attempts: 10,
+        recheck_interval: Duration::from_millis(200),
+    };
+    let worker = tokio::spawn(run_outbox_worker(worker_pool, settings, shutdown.clone()));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let killed: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'outbox-db-error-test') AS k",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(killed > 0, "the worker should have had connections to kill");
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(
+        !worker.is_finished(),
+        "dropped connections must not stop the worker"
+    );
+
+    let id = insert_outbox_row(&pool, &unique_tag("ex0031")).await;
+    let took = wait_until_published(&pool, id, Duration::from_secs(5)).await;
+
+    shutdown.cancel();
+    let stopped = tokio::time::timeout(Duration::from_secs(3), worker).await;
+    delete_outbox_rows(&pool, &[id]).await;
+    assert!(
+        took.is_some(),
+        "the worker should handle events after reconnecting"
+    );
+    assert!(
+        stopped
+            .expect("the worker should stop after shutdown")
+            .unwrap()
+            .is_ok(),
+        "the worker should stop cleanly"
+    );
+}

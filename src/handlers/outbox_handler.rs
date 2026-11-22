@@ -104,7 +104,17 @@ pub async fn run_outbox_worker(
     loop {
         // First, everything already waiting: events that committed while the app was
         // down (OB-3), or that a notification didn't cover.
-        handle_pending_events(&pool, &settings, &shutdown).await?;
+        // A database error here (a dropped connection, the DB restarting) is NOT fatal:
+        // the events are still in the table, so log it and try again at the next
+        // re-check. The pool opens a fresh connection by itself. Failing the worker
+        // would stop the whole app (HTTP and bots too) for a network blip.
+        if let Err(err) = handle_pending_events(&pool, &settings, &shutdown).await {
+            warn!(
+                "outbox pass failed, retrying in {}s: {}",
+                settings.recheck_interval.as_secs_f32(),
+                err
+            );
+        }
 
         tokio::select! {
             biased;
