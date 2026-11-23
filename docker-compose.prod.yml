@@ -3,15 +3,26 @@
 # ============================================
 # Purpose: Production deployment on Oracle Cloud Infrastructure
 # Usage: docker-compose -f docker-compose.prod.yml up -d
+#
+# Datastores (EX0034): each one is behind a profile, so an app starts only what it uses.
+#   mariadb | postgres | redis | mongodb      (Grafana has no profile: it always runs)
+# The deploy writes COMPOSE_PROFILES (GitHub variable) into ~/app/.env, e.g.
+#   COMPOSE_PROFILES=mariadb,redis,mongodb
+# and plain "docker compose up -d" picks it up. By hand: docker compose --profile postgres up -d
+# Turning a profile OFF doesn't stop a container that is already running: after switching
+# databases, stop the old one yourself (e.g. docker compose stop db).
 # ============================================
 
 services:
   # ============================================
   # Rust Microservice (Production - Pre-built Image)
   # ============================================
-  ms1:
-    image: ghcr.io/mrglasses/excelsiorfull:${APP_VERSION:-latest}
-    container_name: ms1-app-prod
+  app:
+    # APP_IMAGE = ghcr.io/<owner>/<repo>, written into .env by the deploy (GD-2), so the
+    # same file works for any app built on Excelsior. ":?" makes compose stop with an
+    # error when it's missing, instead of pulling a nameless image.
+    image: ${APP_IMAGE:?set_APP_IMAGE_in_.env}:${APP_VERSION:-latest}
+    container_name: app-prod
     platform: linux/arm64
     restart: always
     # Docker's default is 10s, then SIGKILL. A stop can take up to 8s of worker shutdown
@@ -19,6 +30,9 @@ services:
     stop_grace_period: 20s
     ports:
       - "${MS_PORT:-3000}:${MS_PORT:-3000}"  # Expose to host for reverse proxy (Nginx/Caddy)
+    # Every variable in ~/app/.env reaches the app, including the extra ones from the
+    # APP_ENV secret (GD-2). The list below adds defaults and wins over the file.
+    env_file: .env
     environment:
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_HOST: ${DATABASE_HOST}
@@ -31,11 +45,24 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-excelsior-prod}
       ENVIRONMENT: production
       RUST_LOG: ${RUST_LOG:-info,excelsior=debug}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      WORKER_SHUTDOWN_TIMEOUT_SECS: ${WORKER_SHUTDOWN_TIMEOUT_SECS:-8}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+    # required: false = wait for it only when its profile is on (GD-1).
     depends_on:
       db:
         condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
       redis:
         condition: service_started
+        required: false
       # No MongoDB here: the app doesn't use it, and on 2026-11-13 a broken Mongo kept
       # the app from starting at all.
     networks:
@@ -60,6 +87,7 @@ services:
   # MariaDB Database (Production)
   # ============================================
   db:
+    profiles: [mariadb]
     container_name: mariadb-prod
     # Image versions are pinned (major.minor): never ":latest" for a database.
     # A re-download of ":latest" can jump a major version and refuse the old data
@@ -76,8 +104,8 @@ services:
       MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - mariadb-data:/var/lib/mysql
-      # AUTO-RUN MIGRATIONS ON FIRST START
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+      # No init scripts here anymore: the app applies src/database/migrations itself at
+      # startup (sqlx), on new and existing databases alike.
       # Production: Add backup volume
       - ./backups/mariadb:/backups
     networks:
@@ -95,9 +123,43 @@ services:
           memory: 512M
 
   # ============================================
+  # PostgreSQL (Production) - profile "postgres"
+  # ============================================
+  # For apps on the Postgres packs. Point the app at it with DATABASE_HOST=postgres and
+  # DATABASE_PORT=5432. Same DATABASE_* secrets as MariaDB.
+  postgres:
+    profiles: [postgres]
+    container_name: postgres-prod
+    image: postgres:18
+    platform: linux/arm64
+    restart: always
+    ports:
+      - "127.0.0.1:5432:5432"  # Only accessible from the VPS itself (SSH tunnel)
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PSWD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      # Postgres 18 keeps its data in a versioned folder under /var/lib/postgresql.
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================
   # MongoDB (Production)
   # ============================================
   mongodb:
+    profiles: [mongodb]
     # Pinned to the version that wrote the data (featureCompatibilityVersion 8.2).
     # Going to 9.0 means setting the FCV first, not just changing this tag.
     image: mongo:8.2
@@ -129,6 +191,7 @@ services:
   # Redis (Production)
   # ============================================
   redis:
+    profiles: [redis]
     image: redis:8.10
     container_name: redis-prod
     platform: linux/arm64
@@ -178,6 +241,8 @@ services:
 # ============================================
 volumes:
   mariadb-data:
+    driver: local
+  postgres-data:
     driver: local
   mongo-data:
     driver: local
