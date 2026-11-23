@@ -34,6 +34,8 @@ tokio = { version = "1.0", features = ["full", "test-util"] }
 # Used by many packs' tests (see the comment above).
 mockall = "0.14"
 httpmock = "0.8.0-alpha.1"
+# InMemoryMetricExporter for the metrics tests; tests only, not in the app binary.
+opentelemetry_sdk = { version = "0.32.1", features = ["testing"] }
 
 # Packs add new sections ([profile.release], [features]...) below this line, never above:
 # git keeps dependency lines and new sections apart only if they're added in different spots.

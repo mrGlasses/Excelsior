@@ -20,6 +20,9 @@ use tracing::Span;
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/ping", get(get_pong))
+        .layer(axum::middleware::from_fn(
+            crate::utils::otel_config::count_ping_requests,
+        ))
         // One line per pack, e.g. `.merge(db_routes::routes())`
         .layer((
             TraceLayer::new_for_http()
