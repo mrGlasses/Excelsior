@@ -14,6 +14,9 @@ services:
     container_name: ms1-app-prod
     platform: linux/arm64
     restart: always
+    # Docker's default is 10s, then SIGKILL. A stop can take up to 8s of worker shutdown
+    # (WORKER_SHUTDOWN_TIMEOUT_SECS) plus the trace flush (up to 10s if Grafana is slow).
+    stop_grace_period: 20s
     ports:
       - "${MS_PORT:-3000}:${MS_PORT:-3000}"  # Expose to host for reverse proxy (Nginx/Caddy)
     environment:
