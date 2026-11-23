@@ -1,5 +1,5 @@
 name = "postgresql-sqlx-keep-alive"
-version = "2.0.2"
+version = "2.0.3"
 excelsior = "3.1"
 ticket = "EX0003"
 requires = []
