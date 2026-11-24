@@ -1,5 +1,5 @@
 name = "outbox-mariadb"
-version = "2.0.2"
+version = "2.0.3"
 excelsior = "3.1"
 ticket = "EX0029"
 requires = ["mariadb-sqlx-keep-alive", "background-tasks"]

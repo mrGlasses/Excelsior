@@ -101,13 +101,19 @@ async fn start_outbox_worker(
     max_attempts: i32,
     recheck_interval: Duration,
 ) -> tokio_util::sync::CancellationToken {
+    start_outbox_worker_with(OutboxSettings {
+        max_attempts,
+        recheck_interval,
+        // No waiting between tries: these tests are about the passes, not the backoff.
+        retry_base: Duration::ZERO,
+    })
+    .await
+}
+
+async fn start_outbox_worker_with(settings: OutboxSettings) -> tokio_util::sync::CancellationToken {
     let pool = create_test_db_pool().await;
     let shutdown = tokio_util::sync::CancellationToken::new();
     let token = shutdown.clone();
-    let settings = OutboxSettings {
-        max_attempts,
-        recheck_interval,
-    };
     tokio::spawn(async move { run_outbox_worker(pool, settings, token).await });
     shutdown
 }
@@ -276,6 +282,38 @@ async fn test_outbox_failing_event_is_retried_then_set_aside() {
     assert!(failed, "the event should be set aside");
     assert_eq!(attempts, 3);
     assert_eq!(last_error.as_deref(), Some("demo failure"));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_outbox_failing_event_waits_longer_each_time() {
+    // HFEX0004: with a 1s base, tries come at ~0s, ~1s, ~3s (1s, then 2s of waiting).
+    // Without the backoff, a 100ms re-check would have tried it ~25 times by now.
+    setup_test_env();
+    let pool = create_test_db_pool().await;
+    let shutdown = start_outbox_worker_with(OutboxSettings {
+        max_attempts: 10,
+        recheck_interval: Duration::from_millis(100),
+        retry_base: Duration::from_secs(1),
+    })
+    .await;
+
+    let boom = insert_outbox_row(&pool, "boom").await;
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let (_, attempts_at_2_5s, failed, _) = outbox_state(&pool, boom).await;
+    let waiting: i64 = sqlx::query_scalar(
+        "SELECT CAST(next_attempt_at > NOW(6) AS SIGNED) FROM outbox WHERE id = ?",
+    )
+    .bind(boom)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    shutdown.cancel();
+    delete_outbox_rows(&pool, &[boom]).await;
+    assert_eq!(attempts_at_2_5s, 2, "tried at ~0s and ~1s, next at ~3s");
+    assert!(!failed);
+    assert_eq!(waiting, 1, "next_attempt_at should be in the future");
 }
 
 #[tokio::test]

@@ -67,17 +67,21 @@ pub async fn mark_published(conn: &mut MySqlConnection, event_id: i64) -> Result
     Ok(())
 }
 
-// Returns true when the event used its last attempt and was set aside.
+// Returns true when the event used its last attempt and was set aside. Otherwise the
+// event waits retry_base * 2^(attempts - 1) (at most an hour) before its next try.
 pub async fn mark_failed(
     conn: &mut MySqlConnection,
     event_id: i64,
     error: &str,
     max_attempts: i32,
+    retry_base: std::time::Duration,
 ) -> Result<bool> {
-    let row = query("CALL sp_mark_outbox_failed(?, ?, ?)")
+    let retry_base_secs = i32::try_from(retry_base.as_secs()).unwrap_or(i32::MAX);
+    let row = query("CALL sp_mark_outbox_failed(?, ?, ?, ?)")
         .bind(event_id)
         .bind(error)
         .bind(max_attempts)
+        .bind(retry_base_secs)
         .fetch_one(conn)
         .await?;
     let gave_up: i64 = row.try_get("gave_up")?;

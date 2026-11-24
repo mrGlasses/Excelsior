@@ -34,6 +34,7 @@ git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 - `DEMO_HEARTBEAT_FAIL_AFTER` — optional, demo only: makes the `heartbeat` worker fail after that many beats, so the app exits with code 1.
 - `DEMO_STUCK_WORKER` — optional, demo only: `true` starts a worker that ignores the stop signal, to see the shutdown timeout.
 - `OUTBOX_MAX_ATTEMPTS` — optional, how many times the outbox worker tries a failing event before setting it aside (default `10`).
+- `OUTBOX_RETRY_BASE_SECS` — optional, seconds a failed event waits before its next try, doubled each time, at most an hour (default `5`; `0` = retry on the next pass).
 
 ### Outbox (MariaDB)
 
@@ -87,7 +88,7 @@ the files packs add lines to (`.env`, `.env.test`, `README.md`, `Cargo.toml`, `m
 the registries below). For that to work:
 
 - Only **add** lines to shared files; never change, reorder or delete an existing line.
-- `mod` lines go right **above the marker comment** in each `mod.rs`, `lib.rs` and `main.rs`
+- `mod` lines go right **above the marker comment** in each `mod.rs` and `lib.rs`
   ("Packs add their `mod` lines above this one"), never in alphabetical order: lines added
   around the same existing line by three packs get duplicated by git. `rustfmt.toml` keeps
   `cargo fmt` from sorting them. The `engine/`, `database/` and `domain/tests/` modules
@@ -155,6 +156,8 @@ several other libraries, including:
 - 3.1.1: Adds `rustfmt.toml`, missing from the 3.1.0 commit.
 - 3.1.2: Fix: the app's own logs were switched off when no pack adds a tracing layer (since 3.0.0).
 - 3.1.3: Marker at the end of `Cargo.toml`: packs add new sections below it.
+- 3.1.4: `EXTERNAL_SERVICE_URL` leaves `main`'s `.env` files: only `http-external-call` uses it, and it adds the line itself.
+- 3.1.5: `main.rs` only starts the app and uses the library: everything was compiled, and every unit test run, twice.
 
 ## License
 

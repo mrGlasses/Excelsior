@@ -93,6 +93,7 @@ fn test_outbox_settings_default() {
         OutboxSettings {
             max_attempts: 10,
             recheck_interval: Duration::from_secs(1),
+            retry_base: Duration::from_secs(5),
         }
     );
 }
@@ -123,6 +124,7 @@ async fn test_worker_survives_database_errors() {
     let settings = OutboxSettings {
         max_attempts: 3,
         recheck_interval: Duration::from_millis(100),
+        retry_base: Duration::ZERO,
     };
     let worker = tokio::spawn(run_outbox_worker(pool, settings, shutdown.clone()));
 
@@ -139,4 +141,25 @@ async fn test_worker_survives_database_errors() {
         .expect("the worker should stop after shutdown")
         .unwrap();
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_retry_base_default() {
+    assert_eq!(retry_base_from(None), Duration::from_secs(5));
+}
+
+#[test]
+fn test_retry_base_from_env_value() {
+    assert_eq!(
+        retry_base_from(Some(" 30 ".to_string())),
+        Duration::from_secs(30)
+    );
+    // 0 = retry on the next pass.
+    assert_eq!(retry_base_from(Some("0".to_string())), Duration::ZERO);
+}
+
+#[test]
+#[should_panic(expected = "OUTBOX_RETRY_BASE_SECS must be a whole number of seconds (0 or more).")]
+fn test_retry_base_rejects_text() {
+    retry_base_from(Some("five".to_string()));
 }
