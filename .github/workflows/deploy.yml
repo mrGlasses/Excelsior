@@ -573,6 +573,26 @@ jobs:
             echo "TELEGRAM_BOT_TOKEN secret set and ready to go!"
           fi
 
+      # HFEX0003: Grafana's and Mongo's admin logins. Grafana and Mongo only read them when
+      # their data is created, so a blank one would stick: fail here instead, before
+      # anything on the VPS changes.
+      - name: Check admin login secrets
+        env:
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          MONGO_INITDB_ROOT_USERNAME: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
+        run: |
+          missing=0
+          for name in GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD MONGO_INITDB_ROOT_USERNAME MONGO_INITDB_ROOT_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Error: $name secret is not set (Settings > Environments > Deploy)."
+              missing=1
+            fi
+          done
+          [ "$missing" = 0 ] && echo "Admin login secrets set and ready to go!"
+          exit "$missing"
+
       - name: Setup SSH
         run: |
           echo "Setting up SSH..."
@@ -612,6 +632,10 @@ jobs:
           DATABASE_PSWD: ${{ secrets.DATABASE_PSWD }}
           DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          MONGO_INITDB_ROOT_USERNAME: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
+          MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -653,6 +677,16 @@ jobs:
             echo "# Grafana OpenTelemetry"
             line OTEL_EXPORTER_OTLP_ENDPOINT "$OTEL_EXPORTER_OTLP_ENDPOINT"
             line OTEL_SERVICE_NAME excelsior-prod
+            echo
+            echo "# Admin logins (HFEX0003): read only when Grafana's / Mongo's data is created"
+            # Compose expands "$" inside .env values ("a$b" would become "a"), so "$" is
+            # written as "$$". Only for these new values: the older ones are left as they
+            # were, since a database may already have been created with them.
+            line_literal() { line "$1" "${2//\$/\$\$}"; }
+            line_literal GRAFANA_ADMIN_USER "$GRAFANA_ADMIN_USER"
+            line_literal GRAFANA_ADMIN_PASSWORD "$GRAFANA_ADMIN_PASSWORD"
+            line_literal MONGO_INITDB_ROOT_USERNAME "$MONGO_INITDB_ROOT_USERNAME"
+            line_literal MONGO_INITDB_ROOT_PASSWORD "$MONGO_INITDB_ROOT_PASSWORD"
             echo
             echo "# Redis"
             line REDIS_HOST redis

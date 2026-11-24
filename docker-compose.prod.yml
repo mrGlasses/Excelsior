@@ -167,6 +167,8 @@ services:
     platform: linux/arm64
     restart: always
     environment:
+      # From the Deploy secrets (HFEX0003). Like Grafana's, used only when the data
+      # volume is empty: on existing data they change nothing.
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     ports:
@@ -222,12 +224,21 @@ services:
       - "127.0.0.1:4317:4317"    # OTLP gRPC (internal only)
       - "127.0.0.1:4318:4318"    # OTLP HTTP (internal only)
     environment:
+      # Grafana's admin, from the Deploy secrets (HFEX0003). Used only when Grafana's
+      # database is created (first start on an empty volume): changing the secret later
+      # does NOT change the password, reset it inside the container instead.
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
-      # Keep logs (Loki) for 3 days only: small VPS disk.
+      # Retention (small VPS disk): logs 3 days (Loki), traces 3 days (Tempo 3.x has the
+      # setting in two places), metrics 7 days (Prometheus; default 15d).
       - LOKI_EXTRA_ARGS=-compactor.retention-enabled=true -compactor.delete-request-store=filesystem -store.retention=72h
+      - TEMPO_EXTRA_ARGS=-backend-worker.compaction.block-retention=72h -backend-scheduler.provider.work.compaction.block-retention=72h
+      - PROMETHEUS_EXTRA_ARGS=--storage.tsdb.retention.time=7d
     volumes:
-      - grafana-data:/var/lib/grafana
+      # otel-lgtm keeps everything under /data (grafana, loki, prometheus, tempo,
+      # pyroscope). It was mounted at /var/lib/grafana, which this image doesn't use, so
+      # all telemetry and Grafana's own settings were wiped on every recreate (HFEX0003).
+      - grafana-data:/data
     networks:
       - app-network
     deploy:
