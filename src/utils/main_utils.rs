@@ -18,6 +18,17 @@ pub async fn service_starter() -> bool {
     dotenv().ok();
     setup_tracing().await;
 
+    let clean_shutdown = run_service().await;
+
+    // Here, not inside run_service(): every way out of it (a pack that couldn't start,
+    // a failing worker, Ctrl+C) passes this line, so packs always get to flush (the
+    // buffered traces, for example).
+    pack_shutdown();
+
+    clean_shutdown
+}
+
+async fn run_service() -> bool {
     // Each pack connects to its service here (see state.rs).
     let state = build_app_state().await;
 
@@ -64,7 +75,6 @@ pub async fn service_starter() -> bool {
     let (_, _, any_worker_failed) =
         tokio::join!(wait_for_signal, http_server, workers.run_until_shutdown());
     info!("server stopped");
-    pack_shutdown();
 
     !any_worker_failed
 }
