@@ -15,11 +15,13 @@ use tracing::Span;
 // (`<pack>_routes.rs` with `pub fn routes() -> Router<AppState>`), and adds ONE
 // `pub mod <pack>_routes;` line here and ONE `.merge(...)` line in create_routes().
 // mod.rs files are `merge=union` in .gitattributes, so packs adding lines never conflict.
+pub mod i18n_routes;
 // Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/ping", get(get_pong))
+        .merge(i18n_routes::routes())
         // One line per pack, e.g. `.merge(db_routes::routes())`
         .layer((
             TraceLayer::new_for_http()

@@ -1,4 +1,5 @@
 pub mod simple_handler;
+pub mod i18n_handler;
 // Packs add their `mod` lines above this one (see "Writing a pack" in the README).
 
 #[cfg(test)]

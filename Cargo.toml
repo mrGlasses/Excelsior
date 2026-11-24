@@ -22,6 +22,9 @@ anyhow = "1.0.97"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# i18n (EX0035): Fluent message files in i18n/, one per language
+fluent-bundle = "0.16.0"
+unic-langid = "0.9.6"
 
 [dev-dependencies]
 axum = { version = "0.8.8" }
@@ -29,6 +32,8 @@ tokio = { version = "1.0", features = ["full", "test-util"] }
 # Used by many packs' tests (see the comment above).
 mockall = "0.14"
 httpmock = "0.8.0-alpha.1"
+# Parses the .ftl files in the missing-translation test (I18N-3).
+fluent-syntax = "0.12.0"
 
 # Packs add new sections ([profile.release], [features]...) below this line, never above:
 # git keeps dependency lines and new sections apart only if they're added in different spots.

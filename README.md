@@ -29,6 +29,10 @@ git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 ```
 
 
+### Environment variables (i18n)
+
+- `DEFAULT_LOCALE` — optional, the language used when `Accept-Language` asks for one the app doesn't have (default `en`). Languages are the files in `i18n/` (`en.ftl`, `pt-BR.ftl`); a new language is a new `i18n/<tag>.ftl` and one line in `SOURCES` (`utils/i18n.rs`).
+
 ## Versioning
 
 Excelsior's version (`version` in `Cargo.toml`) is only changed on `main`. Packs never edit it:

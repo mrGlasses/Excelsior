@@ -1,0 +1,6 @@
+name = "i18n"
+version = "1.0.0"
+excelsior = "3.1"
+ticket = "EX0035"
+requires = []
+description = "Fluent files per language, Accept-Language negotiation, plurals, missing-key test"
