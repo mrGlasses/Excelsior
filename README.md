@@ -35,6 +35,9 @@ git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 - `DEMO_STUCK_WORKER` — optional, demo only: `true` starts a worker that ignores the stop signal, to see the shutdown timeout.
 - `TELEGRAM_BOT_TOKEN` — **required**, the bot token from @BotFather; the app exits at start without it. Don't put a real token in `.env` (it's tracked in git): set it in your shell or IDE run configuration.
 - `TELEGRAM_API_URL` — optional, Telegram Bot API base URL (default `https://api.telegram.org`); tests point it at a fake server.
+- `TELEGRAM_UPDATE_LIMIT` — optional, updates per poll, 1 to 100 (default `100`). A batch is confirmed only once all of it is handled, so a crash re-delivers it instead of losing it (apps dedupe by `update_id`) (EX0037).
+- `TELEGRAM_MAX_CONCURRENT` — optional, chats handled at the same time (default `16`). Updates from one chat stay in order; each may take up to 30 s (EX0037).
+- Plugging in your app (EX0037): implement `TelegramApp` (`handle(api, update)`) and change the one line in `src/utils/pack_telegram_app.rs`. `update.from()` is the sender (`id`, `username`, `language_code`), `update.chat_id()` the chat. `send_photo` takes a `PhotoSource` (`FileId`, `Url` or `Bytes`) and returns the `file_id` to reuse. Errors can be told apart with `err.downcast_ref::<TelegramError>()` (`RateLimited { retry_after }`, `Forbidden` = blocked by the user). To send from anywhere in the app, use `AppState.telegram`.
 After merging packs, run `cargo fmt` once: git keeps every pack's `mod` line, but not in the
 alphabetical order rustfmt wants.
 

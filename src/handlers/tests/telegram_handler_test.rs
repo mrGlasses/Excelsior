@@ -1,16 +1,34 @@
 use crate::domain::telegram::*;
 use crate::engine::telegram_engine::MockTelegramExecutor;
+use crate::engine::telegram_engine::{TelegramApp, TelegramExecutor};
 use crate::handlers::telegram_handler::*;
 use anyhow::anyhow;
 use mockall::predicate::*;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+
+// The bot worker with the demo app, as the pack starts it.
+async fn run_demo(api: MockTelegramExecutor, shutdown: CancellationToken) -> anyhow::Result<()> {
+    run_telegram_bot(
+        Arc::new(api),
+        Arc::new(DemoTelegramApp),
+        DEFAULT_MAX_CONCURRENT,
+        shutdown,
+    )
+    .await
+}
 
 fn command_update(update_id: i64, text: &str) -> Update {
     Update {
         update_id,
         message: Some(IncomingMessage {
             message_id: 1,
-            chat: Chat { id: 5 },
+            from: None,
+            chat: Chat {
+                id: 5,
+                kind: "private".to_string(),
+            },
             text: Some(text.to_string()),
         }),
         callback_query: None,
@@ -23,10 +41,15 @@ fn button_tap(data: &str) -> Update {
         message: None,
         callback_query: Some(CallbackQuery {
             id: "tap-1".to_string(),
+            from: None,
             data: Some(data.to_string()),
             message: Some(IncomingMessage {
                 message_id: 43,
-                chat: Chat { id: 5 },
+                from: None,
+                chat: Chat {
+                    id: 5,
+                    kind: "private".to_string(),
+                },
                 text: Some("Pick one:".to_string()),
             }),
         }),
@@ -202,7 +225,7 @@ async fn test_bot_handles_update_then_confirms_it_on_shutdown() {
         .times(1)
         .returning(|_, _| Ok(vec![]));
 
-    run_telegram_bot(Box::new(api), shutdown).await.unwrap();
+    run_demo(api, shutdown).await.unwrap();
 }
 
 #[tokio::test]
@@ -227,7 +250,7 @@ async fn test_failing_update_is_skipped_not_retried() {
             Ok(vec![])
         });
 
-    run_telegram_bot(Box::new(api), shutdown).await.unwrap();
+    run_demo(api, shutdown).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -249,7 +272,7 @@ async fn test_polling_error_is_retried() {
     });
 
     // Returns Ok: a network error while polling doesn't kill the worker.
-    run_telegram_bot(Box::new(api), shutdown).await.unwrap();
+    run_demo(api, shutdown).await.unwrap();
 }
 
 #[tokio::test]
@@ -259,10 +282,155 @@ async fn test_wrong_token_fails_the_worker() {
         .times(1)
         .returning(|| Err(anyhow!("telegram getMe failed: Unauthorized")));
 
-    let result = run_telegram_bot(Box::new(api), CancellationToken::new()).await;
+    let result = run_demo(api, CancellationToken::new()).await;
 
     assert_eq!(
         result.unwrap_err().to_string(),
         "telegram getMe failed: Unauthorized"
     );
+}
+
+// ---------------------------------------------------------------------------------------
+// EX0037: per-chat order, chats in parallel, batches confirmed only when handled
+// ---------------------------------------------------------------------------------------
+
+fn text_from(update_id: i64, chat_id: i64, text: &str) -> Update {
+    Update {
+        update_id,
+        message: Some(IncomingMessage {
+            message_id: update_id,
+            from: Some(TelegramUser {
+                id: chat_id,
+                ..Default::default()
+            }),
+            chat: Chat {
+                id: chat_id,
+                kind: "private".to_string(),
+            },
+            text: Some(text.to_string()),
+        }),
+        callback_query: None,
+    }
+}
+
+// Records "<chat>:<text>" when each update finishes. Texts starting with "slow" take 5 s.
+struct RecordingApp {
+    finished: Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl TelegramApp for RecordingApp {
+    async fn handle(&self, _api: Arc<dyn TelegramExecutor>, update: Update) -> anyhow::Result<()> {
+        let message = update.message.unwrap();
+        let text = message.text.unwrap();
+        if text.starts_with("slow") {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+        self.finished
+            .lock()
+            .unwrap()
+            .push(format!("{}:{}", message.chat.id, text));
+        Ok(())
+    }
+}
+
+#[test]
+fn test_group_by_chat_keeps_order_within_a_chat() {
+    let groups = group_by_chat(vec![
+        text_from(1, 10, "a"),
+        text_from(2, 20, "b"),
+        text_from(3, 10, "c"),
+    ]);
+    let ids: Vec<Vec<i64>> = groups
+        .iter()
+        .map(|g| g.iter().map(|u| u.update_id).collect())
+        .collect();
+    assert_eq!(ids, vec![vec![1, 3], vec![2]]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_a_slow_chat_does_not_delay_another_chat() {
+    let app = Arc::new(RecordingApp {
+        finished: Mutex::new(vec![]),
+    });
+    let api: Arc<dyn TelegramExecutor> = Arc::new(MockTelegramExecutor::new());
+    let dyn_app: Arc<dyn TelegramApp> = app.clone();
+    let batch = vec![
+        text_from(1, 10, "slow one"),
+        text_from(2, 10, "after slow"),
+        text_from(3, 20, "quick"),
+    ];
+
+    let done = handle_batch(
+        &api,
+        &dyn_app,
+        batch,
+        DEFAULT_MAX_CONCURRENT,
+        &CancellationToken::new(),
+    )
+    .await;
+
+    assert!(done);
+    // Chat 20 finished first; chat 10 kept its own order.
+    assert_eq!(
+        *app.finished.lock().unwrap(),
+        vec!["20:quick", "10:slow one", "10:after slow"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_shutdown_mid_batch_does_not_confirm_it() {
+    let app = Arc::new(RecordingApp {
+        finished: Mutex::new(vec![]),
+    });
+    let api: Arc<dyn TelegramExecutor> = Arc::new(MockTelegramExecutor::new());
+    let dyn_app: Arc<dyn TelegramApp> = app.clone();
+    let shutdown = CancellationToken::new();
+    shutdown.cancel();
+
+    // The slow update needs 5 s, shutdown allows 3: the batch is not reported as handled.
+    let done = handle_batch(&api, &dyn_app, vec![text_from(1, 10, "slow")], 4, &shutdown).await;
+
+    assert!(!done);
+}
+
+#[tokio::test]
+async fn test_batch_of_two_is_confirmed_with_the_highest_id() {
+    let shutdown = CancellationToken::new();
+    let stop = shutdown.clone();
+    let mut api = MockTelegramExecutor::new();
+    api.expect_get_me().times(1).returning(|| Ok(bot_user()));
+    api.expect_get_updates()
+        .with(eq(None), eq(POLL_TIMEOUT_SECS))
+        .times(1)
+        .returning(|_, _| Ok(vec![text_from(7, 5, "/ping"), text_from(9, 6, "/ping")]));
+    api.expect_send_message()
+        .times(2)
+        .returning(|_, _, _| Ok(()));
+    // Both handled: the next poll confirms everything up to 9.
+    api.expect_get_updates()
+        .with(eq(Some(10)), eq(POLL_TIMEOUT_SECS))
+        .times(1)
+        .returning(move |_, _| {
+            stop.cancel();
+            Ok(vec![])
+        });
+    api.expect_get_updates()
+        .with(eq(Some(10)), eq(0))
+        .times(1)
+        .returning(|_, _| Ok(vec![]));
+
+    run_demo(api, shutdown).await.unwrap();
+}
+
+#[test]
+fn test_max_concurrent_from_env() {
+    assert_eq!(max_concurrent_from(None), DEFAULT_MAX_CONCURRENT);
+    assert_eq!(max_concurrent_from(Some("4".to_string())), 4);
+}
+
+#[test]
+#[should_panic(expected = "TELEGRAM_MAX_CONCURRENT must be a number greater than 0.")]
+fn test_max_concurrent_zero_panics() {
+    max_concurrent_from(Some("0".to_string()));
 }
