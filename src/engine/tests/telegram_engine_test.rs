@@ -289,3 +289,47 @@ fn test_update_limit_from_env() {
 fn test_update_limit_above_100_panics() {
     update_limit_from(Some("101".to_string()));
 }
+
+// EX0040: editing a message can keep (replace) its buttons, e.g. a page of a list.
+#[tokio::test]
+async fn test_edit_message_text_with_and_without_keyboard() {
+    let server = MockServer::start_async().await;
+    let with_keyboard = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/bot123:TEST-TOKEN/editMessageText")
+                .json_body(json!({
+                    "chat_id": 5, "message_id": 9, "text": "Page 2",
+                    "reply_markup": {"inline_keyboard": [[{"text": "◀", "callback_data": "page:1"}]]}
+                }));
+            then.status(200)
+                .json_body(json!({"ok": true, "result": {"message_id": 9}}));
+        })
+        .await;
+    let without = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/bot123:TEST-TOKEN/editMessageText")
+                .json_body(json!({"chat_id": 5, "message_id": 9, "text": "Done"}));
+            then.status(200)
+                .json_body(json!({"ok": true, "result": {"message_id": 9}}));
+        })
+        .await;
+
+    let keyboard = InlineKeyboardMarkup {
+        inline_keyboard: vec![vec![InlineKeyboardButton {
+            text: "◀".to_string(),
+            callback_data: "page:1".to_string(),
+        }]],
+    };
+    let api = api_for(&server);
+    api.edit_message_text(5, 9, "Page 2".to_string(), Some(keyboard))
+        .await
+        .unwrap();
+    api.edit_message_text(5, 9, "Done".to_string(), None)
+        .await
+        .unwrap();
+
+    with_keyboard.assert_async().await;
+    without.assert_async().await;
+}

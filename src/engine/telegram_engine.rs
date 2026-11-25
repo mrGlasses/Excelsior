@@ -32,8 +32,14 @@ pub trait TelegramExecutor: Send + Sync {
         text: String,
         keyboard: Option<InlineKeyboardMarkup>,
     ) -> Result<()>;
-    // Replaces a message's text. Its inline buttons disappear, since none are sent.
-    async fn edit_message_text(&self, chat_id: i64, message_id: i64, text: String) -> Result<()>;
+    // Replaces a message's text. EX0040: and its buttons: `keyboard` None removes them.
+    async fn edit_message_text(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: String,
+        keyboard: Option<InlineKeyboardMarkup>,
+    ) -> Result<()>;
     // Tells Telegram a button tap was handled, so the button's loading spinner stops.
     async fn answer_callback_query(&self, callback_query_id: String) -> Result<()>;
     // EX0037: sends a picture; returns the file_id Telegram gave it (the largest size),
@@ -286,13 +292,19 @@ impl TelegramExecutor for TelegramApi {
         Ok(())
     }
 
-    async fn edit_message_text(&self, chat_id: i64, message_id: i64, text: String) -> Result<()> {
-        let _: Value = self
-            .call(
-                "editMessageText",
-                json!({ "chat_id": chat_id, "message_id": message_id, "text": text }),
-            )
-            .await?;
+    async fn edit_message_text(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: String,
+        keyboard: Option<InlineKeyboardMarkup>,
+    ) -> Result<()> {
+        let mut body = json!({ "chat_id": chat_id, "message_id": message_id, "text": text });
+        if let Some(keyboard) = keyboard {
+            body["reply_markup"] = serde_json::to_value(keyboard)?;
+        }
+        // The result is the edited message (or `true`); we don't need it.
+        let _: Value = self.call("editMessageText", body).await?;
         Ok(())
     }
 

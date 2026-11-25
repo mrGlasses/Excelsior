@@ -157,9 +157,9 @@ async fn test_choose_sends_yes_no_buttons() {
 async fn test_tap_yes_edits_message_and_stops_spinner() {
     let mut api = MockTelegramExecutor::new();
     api.expect_edit_message_text()
-        .with(eq(5), eq(43), eq("You chose: Yes".to_string()))
+        .with(eq(5), eq(43), eq("You chose: Yes".to_string()), eq(None))
         .times(1)
-        .returning(|_, _, _| Ok(()));
+        .returning(|_, _, _, _| Ok(()));
     api.expect_answer_callback_query()
         .with(eq("tap-1".to_string()))
         .times(1)
@@ -173,7 +173,7 @@ async fn test_tap_still_answered_when_edit_fails() {
     let mut api = MockTelegramExecutor::new();
     api.expect_edit_message_text()
         .times(1)
-        .returning(|_, _, _| Err(anyhow!("message is not modified")));
+        .returning(|_, _, _, _| Err(anyhow!("message is not modified")));
     api.expect_answer_callback_query()
         .times(1)
         .returning(|_| Ok(()));

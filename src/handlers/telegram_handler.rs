@@ -272,6 +272,7 @@ async fn handle_button_tap(api: &dyn TelegramExecutor, query: CallbackQuery) -> 
                 message.chat.id,
                 message.message_id,
                 format!("You chose: {}", choice),
+                None,
             )
             .await
         }
