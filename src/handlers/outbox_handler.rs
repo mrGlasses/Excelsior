@@ -50,13 +50,15 @@ pub struct OutboxSettings {
     pub retry_base: Duration,
 }
 
-// Settings from the OUTBOX_MAX_ATTEMPTS value; unset means the default.
+// Settings from the OUTBOX_MAX_ATTEMPTS value; unset means the default. At most 100
+// (HFEX0005): the retry delay computes 2^(attempts - 1) in SQL, which overflows from
+// attempt 1025 on, and the failing procedure would then block every event behind it.
 pub fn outbox_settings_from(max_attempts: Option<String>) -> OutboxSettings {
     let max_attempts = match max_attempts {
         None => DEFAULT_MAX_ATTEMPTS,
         Some(text) => match text.trim().parse::<i32>() {
-            Ok(number) if number > 0 => number,
-            _ => panic!("OUTBOX_MAX_ATTEMPTS must be a number greater than 0."),
+            Ok(number) if (1..=100).contains(&number) => number,
+            _ => panic!("OUTBOX_MAX_ATTEMPTS must be a number from 1 to 100."),
         },
     };
     OutboxSettings {

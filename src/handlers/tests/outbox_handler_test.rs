@@ -107,7 +107,7 @@ fn test_outbox_settings_from_env_value() {
 }
 
 #[test]
-#[should_panic(expected = "OUTBOX_MAX_ATTEMPTS must be a number greater than 0.")]
+#[should_panic(expected = "OUTBOX_MAX_ATTEMPTS must be a number from 1 to 100.")]
 fn test_outbox_settings_zero_panics() {
     outbox_settings_from(Some("0".to_string()));
 }
@@ -162,4 +162,18 @@ fn test_retry_base_from_env_value() {
 #[should_panic(expected = "OUTBOX_RETRY_BASE_SECS must be a whole number of seconds (0 or more).")]
 fn test_retry_base_rejects_text() {
     retry_base_from(Some("five".to_string()));
+}
+
+#[test]
+#[should_panic(expected = "OUTBOX_MAX_ATTEMPTS must be a number from 1 to 100.")]
+fn test_outbox_settings_above_100_panics() {
+    outbox_settings_from(Some("101".to_string()));
+}
+
+#[test]
+fn test_outbox_settings_accepts_100() {
+    assert_eq!(
+        outbox_settings_from(Some("100".to_string())).max_attempts,
+        100
+    );
 }

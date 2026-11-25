@@ -33,7 +33,7 @@ git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 - `WORKER_SHUTDOWN_TIMEOUT_SECS` — optional, seconds each background worker gets to stop on shutdown before it's abandoned (default `8`, under Docker's 10-second grace period).
 - `DEMO_HEARTBEAT_FAIL_AFTER` — optional, demo only: makes the `heartbeat` worker fail after that many beats, so the app exits with code 1.
 - `DEMO_STUCK_WORKER` — optional, demo only: `true` starts a worker that ignores the stop signal, to see the shutdown timeout.
-- `OUTBOX_MAX_ATTEMPTS` — optional, how many times the outbox worker tries a failing event before setting it aside (default `10`).
+- `OUTBOX_MAX_ATTEMPTS` — optional, how many times the outbox worker tries a failing event before setting it aside (default `10`, at most `100`).
 - `OUTBOX_RETRY_BASE_SECS` — optional, seconds a failed event waits before its next try, doubled each time, at most an hour (default `5`; `0` = retry on the next pass).
 
 ### Outbox (MariaDB)
