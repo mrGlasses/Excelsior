@@ -36,6 +36,9 @@ git config merge.cargo-lock.driver "git merge-file --ours %A %O %B"
 - `DISCORD_TOKEN` — **required**, the bot token from the Discord Developer Portal (Bot tab); the app exits at start without it. Don't put a real token in `.env` (it's tracked in git): set it in your shell or IDE run configuration.
 - `DISCORD_GUILD_ID` — optional, a server id: slash commands are registered only there and show up at once (good for development). Unset = registered globally.
 - `DISCORD_GATEWAY_URL` — optional, tests only: connect to this address instead of Discord's gateway.
+- `DISCORD_MAX_CONCURRENT` — optional, how many slash commands and clicks are handled at the same time (default `32`). Each runs in its own task, so a slow answer never delays the next user (EX0036).
+- `DISCORD_API_PROXY` — optional, tests only: send the REST calls to this `host:port` over plain HTTP.
+- Plugging in your app (EX0036): implement `DiscordApp` (`commands()` + `handle()`) and change the one line in `src/utils/pack_discord_app.rs`. Answers that take more than ~2 s call `api.defer(...)` first, then `api.follow_up(...)` (the demo `/slow` does this). `DiscordInteraction` has the user's `locale`, the `guild_id` and the command's `options`. To message someone outside an interaction (a DM, a channel post), use `AppState.discord` (`send_dm`, `send_to_channel`).
 After merging packs, run `cargo fmt` once: git keeps every pack's `mod` line, but not in the
 alphabetical order rustfmt wants.
 
