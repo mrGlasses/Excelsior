@@ -265,6 +265,7 @@ pub fn commands() -> Vec<DiscordCommand> {
             name: "ping".to_string(),
             description: "Replies PONG!".to_string(),
             options: vec![],
+            admin_only: false,
         },
         DiscordCommand {
             name: "choose".to_string(),
@@ -275,11 +276,13 @@ pub fn commands() -> Vec<DiscordCommand> {
                 required: false,
                 choices: vec![],
             }],
+            admin_only: false,
         },
         DiscordCommand {
             name: "slow".to_string(),
             description: "Answers after 5 seconds (shows defer and follow-up)".to_string(),
             options: vec![],
+            admin_only: false,
         },
     ]
 }
@@ -397,6 +400,7 @@ async fn handle_button(
         interaction.id,
         interaction.token.clone(),
         format!("You chose: {}", choice),
+        vec![],
     )
     .await
 }

@@ -110,9 +110,10 @@ async fn test_owner_click_updates_the_message() {
             eq(901),
             eq("tok".to_string()),
             eq("You chose: Yes".to_string()),
+            eq(vec![]),
         )
         .times(1)
-        .returning(|_, _, _| Ok(()));
+        .returning(|_, _, _, _| Ok(()));
 
     handle_interaction(&api, click(ALICE, &format!("choose:yes:{}", ALICE)))
         .await

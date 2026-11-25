@@ -86,10 +86,10 @@ fn test_interaction_without_data_is_ignored() {
 // ---------------------------------------------------------------------------------------
 // EX0036: locale, server, options; defer; DMs; the Missing Access message
 // ---------------------------------------------------------------------------------------
-use crate::domain::discord::{Defer, DiscordCommand, DiscordOption};
+use crate::domain::discord::{Defer, DiscordButton, DiscordCommand, DiscordOption};
 use crate::engine::discord_engine::{
     DiscordApi, DiscordExecutor, DiscordMessenger, DiscordSender, defer_response,
-    to_twilight_command,
+    to_twilight_command, update_response,
 };
 use httpmock::prelude::*;
 use serde_json::json;
@@ -163,6 +163,7 @@ fn test_command_options_are_registered() {
             required: true,
             choices: vec!["vehicles".to_string(), "animals".to_string()],
         }],
+        admin_only: false,
     };
 
     let twilight = to_twilight_command(&command);
@@ -281,4 +282,95 @@ async fn test_follow_up_posts_to_the_interaction_webhook() {
     .unwrap();
 
     follow_up.assert_async().await;
+}
+
+// EX0039: a member with a server nickname and a display name.
+const COMMAND_FROM_NICKNAMED_MEMBER: &str = r#"{
+    "id": "1300000000000000003",
+    "application_id": "1200000000000000000",
+    "type": 2,
+    "token": "interaction-token-3",
+    "version": 1,
+    "attachment_size_limit": 8388608,
+    "authorizing_integration_owners": {},
+    "entitlements": [],
+    "guild_id": "1100000000000000000",
+    "channel_id": "1000000000000000000",
+    "member": {
+        "user": {"id": "333", "username": "carol_c", "global_name": "Carol", "discriminator": "0", "avatar": null},
+        "nick": "Captain Carol",
+        "roles": [], "joined_at": "2026-01-01T00:00:00.000000+00:00",
+        "deaf": false, "mute": false, "flags": 0
+    },
+    "data": {"id": "1250000000000000000", "name": "ping", "type": 1}
+}"#;
+
+#[test]
+fn test_names_come_from_nickname_then_display_name_then_username() {
+    let nicknamed: Interaction = serde_json::from_str(COMMAND_FROM_NICKNAMED_MEMBER).unwrap();
+    let ours = to_discord_interaction(&nicknamed).unwrap();
+    assert_eq!(ours.user_name.as_deref(), Some("carol_c"));
+    assert_eq!(ours.display_name.as_deref(), Some("Captain Carol"));
+
+    // No nickname, no display name: the username.
+    let plain: Interaction = serde_json::from_str(BUTTON_CLICK_IN_DM).unwrap();
+    let ours = to_discord_interaction(&plain).unwrap();
+    assert_eq!(ours.user_name.as_deref(), Some("bob"));
+    assert_eq!(ours.display_name.as_deref(), Some("bob"));
+}
+
+#[test]
+fn test_admin_only_commands_need_a_permission_nobody_has_by_default() {
+    let mut command = DiscordCommand {
+        name: "admin".to_string(),
+        description: "Admin tools".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(
+        to_twilight_command(&command).default_member_permissions,
+        None
+    );
+
+    command.admin_only = true;
+    assert_eq!(
+        to_twilight_command(&command).default_member_permissions,
+        Some(twilight_model::guild::Permissions::empty())
+    );
+}
+
+#[test]
+fn test_update_response_replaces_the_buttons() {
+    let paged = update_response(
+        "Page 2".to_string(),
+        vec![DiscordButton {
+            label: "◀".to_string(),
+            custom_id: "page:1".to_string(),
+        }],
+    );
+    assert_eq!(paged.kind, InteractionResponseType::UpdateMessage);
+    let data = paged.data.unwrap();
+    assert_eq!(data.content.as_deref(), Some("Page 2"));
+    assert_eq!(data.components.unwrap().len(), 1);
+
+    // No buttons: an empty list, so Discord removes the old ones.
+    let done = update_response("Done".to_string(), vec![]);
+    assert_eq!(done.data.unwrap().components, Some(vec![]));
+}
+
+#[test]
+fn test_buttons_wrap_five_per_row() {
+    use crate::engine::discord_engine::button_rows;
+    let buttons = |n: usize| -> Vec<DiscordButton> {
+        (0..n)
+            .map(|i| DiscordButton {
+                label: format!("b{i}"),
+                custom_id: format!("b:{i}"),
+            })
+            .collect()
+    };
+    assert!(button_rows(buttons(0)).is_empty());
+    assert_eq!(button_rows(buttons(5)).len(), 1);
+    assert_eq!(button_rows(buttons(7)).len(), 2);
+    // Discord allows 5 rows: the rest are dropped instead of failing the message.
+    assert_eq!(button_rows(buttons(30)).len(), 5);
 }

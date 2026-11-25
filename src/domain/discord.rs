@@ -8,6 +8,9 @@ pub struct DiscordCommand {
     pub description: String,
     // EX0036: text options, e.g. `/choose question:<text>`. Empty = no options.
     pub options: Vec<DiscordOption>,
+    // EX0039: hidden from everyone except the server's administrators (they can still
+    // allow other roles in Server Settings > Integrations). Your handler must still check.
+    pub admin_only: bool,
 }
 
 // A text option of a slash command. `choices` empty = the user types anything.
@@ -34,6 +37,10 @@ pub struct DiscordInteraction {
     pub token: String,
     // Who did it.
     pub user_id: u64,
+    // EX0039: their unique username ("nick_g") and the name others see (the server
+    // nickname, else their display name). None when Discord doesn't send them.
+    pub user_name: Option<String>,
+    pub display_name: Option<String>,
     pub kind: InteractionKind,
     // EX0036: the user's client language ("pt-BR", "en-US"...), when Discord sends it.
     pub locale: Option<String>,

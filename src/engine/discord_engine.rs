@@ -18,6 +18,7 @@ use twilight_model::application::interaction::application_command::{
 use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::channel::message::MessageFlags;
 use twilight_model::channel::message::component::{ActionRow, Button, ButtonStyle, Component};
+use twilight_model::guild::Permissions;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
@@ -45,8 +46,15 @@ pub trait DiscordExecutor: Send + Sync {
         buttons: Vec<DiscordButton>,
         private: bool,
     ) -> Result<()>;
-    // Answers a button click by editing the message it belongs to (its buttons are removed).
-    async fn update_message(&self, interaction_id: u64, token: String, text: String) -> Result<()>;
+    // Answers a button click by editing the message it belongs to. EX0039: `buttons`
+    // replace the message's buttons; an empty list removes them.
+    async fn update_message(
+        &self,
+        interaction_id: u64,
+        token: String,
+        text: String,
+        buttons: Vec<DiscordButton>,
+    ) -> Result<()>;
     // EX0036: answers "I'm working on it" within Discord's 3 seconds; the real answer then
     // comes with follow_up (the token stays valid for 15 minutes).
     async fn defer(&self, interaction_id: u64, token: String, defer: Defer) -> Result<()>;
@@ -102,6 +110,10 @@ pub fn to_twilight_command(command: &DiscordCommand) -> Command {
         }
         builder = builder.option(text);
     }
+    if command.admin_only {
+        // EX0039: "0" = no permission is enough, so only administrators see it.
+        builder = builder.default_member_permissions(Permissions::empty());
+    }
     builder.build()
 }
 
@@ -152,7 +164,7 @@ impl DiscordExecutor for DiscordApi {
     ) -> Result<()> {
         let data = InteractionResponseData {
             content: Some(text),
-            components: (!buttons.is_empty()).then(|| vec![button_row(buttons)]),
+            components: (!buttons.is_empty()).then(|| button_rows(buttons)),
             flags: private.then_some(MessageFlags::EPHEMERAL),
             ..Default::default()
         };
@@ -167,17 +179,14 @@ impl DiscordExecutor for DiscordApi {
         Ok(())
     }
 
-    async fn update_message(&self, interaction_id: u64, token: String, text: String) -> Result<()> {
-        let data = InteractionResponseData {
-            content: Some(text),
-            // An empty list removes the buttons.
-            components: Some(Vec::new()),
-            ..Default::default()
-        };
-        let response = InteractionResponse {
-            kind: InteractionResponseType::UpdateMessage,
-            data: Some(data),
-        };
+    async fn update_message(
+        &self,
+        interaction_id: u64,
+        token: String,
+        text: String,
+        buttons: Vec<DiscordButton>,
+    ) -> Result<()> {
+        let response = update_response(text, buttons);
         self.http
             .interaction(self.application_id)
             .create_response(Id::new(interaction_id), &token, &response)
@@ -212,6 +221,19 @@ impl DiscordExecutor for DiscordApi {
         }
         request.await?;
         Ok(())
+    }
+}
+
+// EX0039: the response that edits a clicked message: new text, new buttons (an empty
+// list removes them, rather than keeping the old ones).
+pub fn update_response(text: String, buttons: Vec<DiscordButton>) -> InteractionResponse {
+    InteractionResponse {
+        kind: InteractionResponseType::UpdateMessage,
+        data: Some(InteractionResponseData {
+            content: Some(text),
+            components: Some(button_rows(buttons)),
+            ..Default::default()
+        }),
     }
 }
 
@@ -305,13 +327,19 @@ impl DiscordMessenger for DiscordSender {
     }
 }
 
-// Our buttons -> one Discord row of blue buttons (none when there are no buttons).
-fn button_rows(buttons: Vec<DiscordButton>) -> Vec<Component> {
-    if buttons.is_empty() {
-        Vec::new()
-    } else {
-        vec![button_row(buttons)]
-    }
+// Discord's limits: 5 buttons per row, 5 rows per message.
+pub const BUTTONS_PER_ROW: usize = 5;
+pub const MAX_BUTTONS: usize = 25;
+
+// Our buttons -> rows of blue buttons, 5 per row (EX0039; was one row, so a 6th button
+// made Discord refuse the message). None when there are no buttons; past 25, the rest
+// are dropped.
+pub fn button_rows(buttons: Vec<DiscordButton>) -> Vec<Component> {
+    let buttons: Vec<DiscordButton> = buttons.into_iter().take(MAX_BUTTONS).collect();
+    buttons
+        .chunks(BUTTONS_PER_ROW)
+        .map(|row| button_row(row.to_vec()))
+        .collect()
 }
 
 fn button_row(buttons: Vec<DiscordButton>) -> Component {
@@ -374,10 +402,24 @@ pub fn to_discord_interaction(interaction: &Interaction) -> Option<DiscordIntera
         }
         _ => return None,
     };
+    // In a server the user comes inside `member` (with the server nickname); in a DM, as `user`.
+    let user = interaction
+        .member
+        .as_ref()
+        .and_then(|member| member.user.as_ref())
+        .or(interaction.user.as_ref());
+    let nickname = interaction
+        .member
+        .as_ref()
+        .and_then(|member| member.nick.clone());
     Some(DiscordInteraction {
         id: interaction.id.get(),
         token: interaction.token.clone(),
         user_id: interaction.author_id()?.get(),
+        user_name: user.map(|user| user.name.clone()),
+        display_name: nickname
+            .or_else(|| user.and_then(|user| user.global_name.clone()))
+            .or_else(|| user.map(|user| user.name.clone())),
         kind,
         locale: interaction.locale.clone(),
         guild_id: interaction.guild_id.map(|id| id.get()),
