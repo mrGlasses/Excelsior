@@ -47,11 +47,15 @@ pub async fn mark_failed(
     event_id: i64,
     error: &str,
     max_attempts: i32,
+    retry_base: std::time::Duration,
 ) -> Result<bool> {
-    let gave_up: bool = query_scalar("SELECT sp_mark_outbox_failed($1, $2, $3)")
+    // Otherwise the event waits retry_base * 2^(attempts - 1) (at most an hour).
+    let retry_base_secs = i32::try_from(retry_base.as_secs()).unwrap_or(i32::MAX);
+    let gave_up: bool = query_scalar("SELECT sp_mark_outbox_failed($1, $2, $3, $4)")
         .bind(event_id)
         .bind(error)
         .bind(max_attempts)
+        .bind(retry_base_secs)
         .fetch_one(conn)
         .await?;
     Ok(gave_up)

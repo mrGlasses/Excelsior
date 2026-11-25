@@ -93,6 +93,7 @@ fn test_outbox_settings_default() {
         OutboxSettings {
             max_attempts: 10,
             recheck_interval: Duration::from_secs(5),
+            retry_base: Duration::from_secs(5),
         }
     );
 }
@@ -109,4 +110,25 @@ fn test_outbox_settings_from_env_value() {
 #[should_panic(expected = "OUTBOX_MAX_ATTEMPTS must be a number greater than 0.")]
 fn test_outbox_settings_zero_panics() {
     outbox_settings_from(Some("0".to_string()));
+}
+
+#[test]
+fn test_retry_base_default() {
+    assert_eq!(retry_base_from(None), Duration::from_secs(5));
+}
+
+#[test]
+fn test_retry_base_from_env_value() {
+    assert_eq!(
+        retry_base_from(Some(" 30 ".to_string())),
+        Duration::from_secs(30)
+    );
+    // 0 = retry on the next pass.
+    assert_eq!(retry_base_from(Some("0".to_string())), Duration::ZERO);
+}
+
+#[test]
+#[should_panic(expected = "OUTBOX_RETRY_BASE_SECS must be a whole number of seconds (0 or more).")]
+fn test_retry_base_rejects_text() {
+    retry_base_from(Some("five".to_string()));
 }
