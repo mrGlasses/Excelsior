@@ -46,6 +46,9 @@ describe (`insert_outbox_event(&mut tx, ...)`), and handled by the `outbox` work
 it re-checks every 5 seconds anyway, retries failing events up to `OUTBOX_MAX_ATTEMPTS`,
 and `FOR UPDATE SKIP LOCKED` lets several app copies share the work without doubles.
 Demo: `curl -X POST localhost:3000/demo-events -H 'Content-Type: application/json' -d '{"msg":"hi"}'`.
+Plugging in your app (EX0038): implement `OutboxApp` (`handle(&event)`: `Ok` = published,
+`Err` = retried with backoff) and change the one line in `src/utils/pack_outbox_app.rs`.
+Delivery is at least once, so a handler must cope with seeing an event twice.
 
 ### Database migrations
 

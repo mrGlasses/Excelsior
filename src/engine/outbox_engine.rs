@@ -60,3 +60,12 @@ pub async fn mark_failed(
         .await?;
     Ok(gave_up)
 }
+
+// EX0038: what an app plugs into the outbox worker (utils/pack_outbox_app.rs picks one).
+// `handle` gets each event once per try: Ok marks it published; Err retries it later with
+// backoff (and sets it aside after OUTBOX_MAX_ATTEMPTS). Delivery is at least once, so a
+// handler must tolerate seeing the same event twice.
+#[async_trait::async_trait]
+pub trait OutboxApp: Send + Sync {
+    async fn handle(&self, event: &crate::domain::outbox::OutboxEvent) -> Result<()>;
+}

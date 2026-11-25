@@ -3,12 +3,15 @@
 // They need the test database from .env.test.
 use axum::http::StatusCode;
 use excelsior::database::connection;
+use excelsior::domain::outbox::OutboxEvent;
 use excelsior::engine::db_engine::DbPool;
-use excelsior::handlers::outbox_handler::{OutboxSettings, run_outbox_worker};
+use excelsior::engine::outbox_engine::OutboxApp;
+use excelsior::handlers::outbox_handler::{DemoOutboxApp, OutboxSettings, run_outbox_worker};
 use excelsior::routes;
 use excelsior::state::build_app_state;
 use serial_test::serial;
 use sqlx::PgPool;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -110,7 +113,9 @@ async fn start_outbox_worker_with(settings: OutboxSettings) -> tokio_util::sync:
     let pool = create_test_db_pool().await;
     let shutdown = tokio_util::sync::CancellationToken::new();
     let token = shutdown.clone();
-    tokio::spawn(async move { run_outbox_worker(pool, settings, token).await });
+    tokio::spawn(
+        async move { run_outbox_worker(pool, settings, Arc::new(DemoOutboxApp), token).await },
+    );
     shutdown
 }
 
@@ -339,7 +344,12 @@ async fn test_outbox_worker_survives_dropped_database_connections() {
         recheck_interval: Duration::from_millis(200),
         retry_base: Duration::ZERO,
     };
-    let worker = tokio::spawn(run_outbox_worker(worker_pool, settings, shutdown.clone()));
+    let worker = tokio::spawn(run_outbox_worker(
+        worker_pool,
+        settings,
+        Arc::new(DemoOutboxApp),
+        shutdown.clone(),
+    ));
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     let killed: i64 = sqlx::query_scalar(
@@ -373,4 +383,59 @@ async fn test_outbox_worker_survives_dropped_database_connections() {
             .is_ok(),
         "the worker should stop cleanly"
     );
+}
+
+// EX0038: an app's own OutboxApp gets the events (here, one that records them), instead of
+// the demo handler.
+struct RecordingApp {
+    seen: Mutex<Vec<(String, String)>>,
+}
+
+#[async_trait::async_trait]
+impl OutboxApp for RecordingApp {
+    async fn handle(&self, event: &OutboxEvent) -> anyhow::Result<()> {
+        let msg = event.payload["msg"].as_str().unwrap_or("").to_string();
+        self.seen
+            .lock()
+            .unwrap()
+            .push((event.event_type.clone(), msg));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_outbox_hands_events_to_the_app() {
+    setup_test_env();
+    let pool = create_test_db_pool().await;
+    let app = Arc::new(RecordingApp {
+        seen: Mutex::new(vec![]),
+    });
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let settings = OutboxSettings {
+        max_attempts: 10,
+        recheck_interval: Duration::from_millis(200),
+        retry_base: Duration::ZERO,
+    };
+    let worker = tokio::spawn(run_outbox_worker(
+        pool.clone(),
+        settings,
+        app.clone(),
+        shutdown.clone(),
+    ));
+    let tag = unique_tag("ex0038");
+
+    // "boom" too: only the demo handler fails on it, this app doesn't.
+    let id = insert_outbox_row(&pool, &tag).await;
+    let boom = insert_outbox_row(&pool, "boom").await;
+    let took = wait_until_published(&pool, id, Duration::from_secs(5)).await;
+    let boom_took = wait_until_published(&pool, boom, Duration::from_secs(5)).await;
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(Duration::from_secs(3), worker).await;
+    delete_outbox_rows(&pool, &[id, boom]).await;
+    assert!(took.is_some() && boom_took.is_some());
+    let seen = app.seen.lock().unwrap().clone();
+    assert!(seen.contains(&("DemoEvent".to_string(), tag)), "{seen:?}");
+    assert!(seen.contains(&("DemoEvent".to_string(), "boom".to_string())));
 }

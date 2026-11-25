@@ -1,9 +1,10 @@
 // The outbox: HTTP demo route, the worker that handles events, and the demo event handler.
-// To use it for real, replace `handle_outbox_event` and write events with
-// `insert_outbox_event(&mut tx, ...)` inside your own transactions.
+// To use it for real (EX0038): implement OutboxApp, change the one line in
+// utils/pack_outbox_app.rs, and write events with `insert_outbox_event(&mut tx, ...)` inside
+// your own transactions.
 use crate::domain::outbox::{DemoEventRequest, OutboxEvent};
 use crate::engine::db_engine::{DbPool, create_demo_event_db_call};
-use crate::engine::outbox_engine::{claim_next_event, mark_failed, mark_published};
+use crate::engine::outbox_engine::{OutboxApp, claim_next_event, mark_failed, mark_published};
 use crate::state::AppState;
 use crate::utils::workers::Workers;
 use anyhow::{Result, anyhow};
@@ -11,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Json, extract::State, http::StatusCode};
 use sqlx::postgres::PgListener;
 use sqlx::{Pool, Postgres};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -30,8 +32,9 @@ pub fn start(workers: &mut Workers, state: &AppState) -> bool {
         retry_base: retry_base_from(std::env::var("OUTBOX_RETRY_BASE_SECS").ok()),
         ..outbox_settings_from(std::env::var("OUTBOX_MAX_ATTEMPTS").ok())
     };
+    let app = crate::utils::pack_outbox_app::outbox_app(state);
     workers.spawn("outbox", move |shutdown| {
-        run_outbox_worker(pool, settings, shutdown)
+        run_outbox_worker(pool, settings, app, shutdown)
     });
     true
 }
@@ -102,8 +105,18 @@ pub async fn create_demo_event(
     }
 }
 
-// The demo event handler. Real apps replace this: send a message, call a service...
-// It always fails on "boom", to show retries and giving up (OB-4).
+// The demo app: what the worker does with events until an app plugs in its own.
+pub struct DemoOutboxApp;
+
+#[async_trait::async_trait]
+impl OutboxApp for DemoOutboxApp {
+    async fn handle(&self, event: &OutboxEvent) -> Result<()> {
+        handle_outbox_event(event).await
+    }
+}
+
+// The demo event handler. Real apps plug in their own OutboxApp: send a message, call a
+// service... It always fails on "boom", to show retries and giving up (OB-4).
 pub async fn handle_outbox_event(event: &OutboxEvent) -> Result<()> {
     let msg = event.payload["msg"].as_str().unwrap_or("");
     if msg == "boom" {
@@ -118,6 +131,7 @@ pub async fn handle_outbox_event(event: &OutboxEvent) -> Result<()> {
 pub async fn run_outbox_worker(
     pool: Pool<Postgres>,
     settings: OutboxSettings,
+    app: Arc<dyn OutboxApp>,
     shutdown: CancellationToken,
 ) -> Result<()> {
     let mut listener = PgListener::connect_with(&pool).await?;
@@ -130,7 +144,7 @@ pub async fn run_outbox_worker(
         // the events are still in the table, so log it and try again at the next
         // re-check. The pool opens a fresh connection by itself. Failing the worker
         // would stop the whole app (HTTP and bots too) for a network blip.
-        if let Err(err) = handle_pending_events(&pool, &settings, &shutdown).await {
+        if let Err(err) = handle_pending_events(&pool, &settings, app.as_ref(), &shutdown).await {
             warn!(
                 "outbox pass failed, retrying in {}s: {}",
                 settings.recheck_interval.as_secs_f32(),
@@ -159,6 +173,7 @@ pub async fn run_outbox_worker(
 pub async fn handle_pending_events(
     pool: &Pool<Postgres>,
     settings: &OutboxSettings,
+    app: &dyn OutboxApp,
     shutdown: &CancellationToken,
 ) -> Result<()> {
     let mut after_id = 0;
@@ -172,7 +187,7 @@ pub async fn handle_pending_events(
         };
         after_id = event.id;
 
-        match handle_outbox_event(&event).await {
+        match app.handle(&event).await {
             Ok(()) => mark_published(&mut tx, event.id).await?,
             Err(err) => {
                 let message = err.to_string();
