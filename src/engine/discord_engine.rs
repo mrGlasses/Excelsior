@@ -66,6 +66,33 @@ pub trait DiscordExecutor: Send + Sync {
         buttons: Vec<DiscordButton>,
         private: bool,
     ) -> Result<()>;
+    // EX0041: reply / follow_up with a picture under the text (an embed showing
+    // `image_url`, which Discord downloads; it must be a public https URL). The defaults
+    // send the text alone, so an executor that doesn't do images still works.
+    async fn reply_with_image(
+        &self,
+        interaction_id: u64,
+        token: String,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+        private: bool,
+    ) -> Result<()> {
+        let _ = image_url;
+        self.reply(interaction_id, token, text, buttons, private)
+            .await
+    }
+    async fn follow_up_with_image(
+        &self,
+        token: String,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+        private: bool,
+    ) -> Result<()> {
+        let _ = image_url;
+        self.follow_up(token, text, buttons, private).await
+    }
 }
 
 // EX0036: what an app plugs into the Discord bot (utils/pack_discord_app.rs picks one).
@@ -222,6 +249,56 @@ impl DiscordExecutor for DiscordApi {
         request.await?;
         Ok(())
     }
+
+    async fn reply_with_image(
+        &self,
+        interaction_id: u64,
+        token: String,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+        private: bool,
+    ) -> Result<()> {
+        let data = InteractionResponseData {
+            content: Some(text),
+            embeds: Some(vec![image_embed(&image_url)?]),
+            components: (!buttons.is_empty()).then(|| button_rows(buttons)),
+            flags: private.then_some(MessageFlags::EPHEMERAL),
+            ..Default::default()
+        };
+        let response = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(data),
+        };
+        self.http
+            .interaction(self.application_id)
+            .create_response(Id::new(interaction_id), &token, &response)
+            .await?;
+        Ok(())
+    }
+
+    async fn follow_up_with_image(
+        &self,
+        token: String,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+        private: bool,
+    ) -> Result<()> {
+        let components = button_rows(buttons);
+        let embeds = [image_embed(&image_url)?];
+        let client = self.http.interaction(self.application_id);
+        let mut request = client
+            .create_followup(&token)
+            .content(&text)
+            .embeds(&embeds)
+            .components(&components);
+        if private {
+            request = request.flags(MessageFlags::EPHEMERAL);
+        }
+        request.await?;
+        Ok(())
+    }
 }
 
 // EX0039: the response that edits a clicked message: new text, new buttons (an empty
@@ -235,6 +312,15 @@ pub fn update_response(text: String, buttons: Vec<DiscordButton>) -> Interaction
             ..Default::default()
         }),
     }
+}
+
+// EX0041: an embed that only shows a picture (the text stays in the message content).
+pub fn image_embed(image_url: &str) -> Result<twilight_model::channel::message::Embed> {
+    use twilight_util::builder::embed::{EmbedBuilder, ImageSource};
+    Ok(EmbedBuilder::new()
+        .image(ImageSource::url(image_url)?)
+        .validate()?
+        .build())
 }
 
 // The response that defers: type 5 for a command, type 6 for a button.
@@ -262,6 +348,17 @@ pub trait DiscordMessenger: Send + Sync {
     // A direct message. Fails with Discord's 50007 when the user doesn't accept DMs from
     // the bot (no shared server, or DMs turned off).
     async fn send_dm(&self, user_id: u64, text: String, buttons: Vec<DiscordButton>) -> Result<()>;
+    // EX0041: a DM with a picture (see reply_with_image). Default: the text alone.
+    async fn send_dm_with_image(
+        &self,
+        user_id: u64,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+    ) -> Result<()> {
+        let _ = image_url;
+        self.send_dm(user_id, text, buttons).await
+    }
     async fn send_to_channel(
         &self,
         channel_id: u64,
@@ -309,6 +406,30 @@ impl DiscordMessenger for DiscordSender {
             .model()
             .await?;
         self.send_to_channel(channel.id.get(), text, buttons).await
+    }
+
+    async fn send_dm_with_image(
+        &self,
+        user_id: u64,
+        text: String,
+        image_url: String,
+        buttons: Vec<DiscordButton>,
+    ) -> Result<()> {
+        let channel = self
+            .http
+            .create_private_channel(Id::new(user_id))
+            .await?
+            .model()
+            .await?;
+        let components = button_rows(buttons);
+        let embeds = [image_embed(&image_url)?];
+        self.http
+            .create_message(channel.id)
+            .content(&text)
+            .embeds(&embeds)
+            .components(&components)
+            .await?;
+        Ok(())
     }
 
     async fn send_to_channel(

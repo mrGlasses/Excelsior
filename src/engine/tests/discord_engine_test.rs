@@ -374,3 +374,48 @@ fn test_buttons_wrap_five_per_row() {
     // Discord allows 5 rows: the rest are dropped instead of failing the message.
     assert_eq!(button_rows(buttons(30)).len(), 5);
 }
+
+// EX0041: a DM with a picture: the text as content, the picture as an embed.
+#[tokio::test]
+async fn test_send_dm_with_image_posts_an_image_embed() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST").path("/api/v10/users/@me/channels");
+            then.status(200)
+                .json_body(json!({"id": "555", "type": 1, "recipients": []}));
+        })
+        .await;
+    let post = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/api/v10/channels/555/messages")
+                .json_body_includes(r#"{"content": "Opala"}"#)
+                .json_body_includes(
+                    r#"{"embeds": [{"image": {"url": "https://art.example/opala.png"}}]}"#,
+                );
+            then.status(200).json_body(json!({}));
+        })
+        .await;
+    let sender = DiscordSender::new(fake_discord_client(&server));
+
+    sender
+        .send_dm_with_image(
+            111,
+            "Opala".to_string(),
+            "https://art.example/opala.png".to_string(),
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    post.assert_async().await;
+}
+
+#[test]
+fn test_image_embed_needs_a_web_url() {
+    use crate::engine::discord_engine::image_embed;
+    let embed = image_embed("https://art.example/a.png").unwrap();
+    assert_eq!(embed.image.unwrap().url, "https://art.example/a.png");
+    assert!(image_embed("not a url").is_err());
+}
